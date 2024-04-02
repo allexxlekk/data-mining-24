@@ -3,6 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import csv
 
 COL_DTYPES = {
     "ID": "int",
@@ -15,21 +16,6 @@ COL_DTYPES = {
     "thigh_y": "float",
     "thigh_z": "float",
     "label": "int",
-}
-
-LABEL_DICT = {
-    1: "walking",
-    2: "running",
-    3: "shuffling",
-    4: "stairs (ascending)",
-    5: "stairs (descending)",
-    6: "standing",
-    7: "sitting",
-    8: "lying",
-    13: "cycling (sit)",
-    14: "cycling (stand)",
-    130: "cycling (sit, inactive)",
-    140: "cycling (stand, inactive)",
 }
 
 
@@ -54,8 +40,12 @@ def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
+def readDataset(folder_path="harth/", max_subjects=22) -> pd.DataFrame:
     """Reads original csv files and loads them into a dataframe."""
+
+    if max_subjects < 1:
+        print(f"Invalid max_subjects: {max_subjects}")
+        return -1
 
     print("Reading dataset...")
     files = os.listdir(folder_path)
@@ -64,11 +54,10 @@ def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
 
     # Iterate over each CSV file and read it into a DataFrame
     for idx, csv_file in enumerate(csv_files):
-        # Choose number of test subjects to include in the DataFrame (for quicker training purposes)
-        if idx >= max_subjects:
+        if idx > max_subjects:
             break
         file_path = os.path.join(folder_path, csv_file)
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, quoting=csv.QUOTE_NONE)
         # Add subject IDs
         df["ID"] = idx
         df = convertTimestampToTimeStep(df)
@@ -78,9 +67,26 @@ def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
     combined_data = np.concatenate(data)
     comb_df = pd.DataFrame(combined_data, columns=COL_DTYPES.keys())
 
+    # Redefine labels to be contiguous integers starting from 0
+    label_mapping = {
+        1: 0,
+        2: 1,
+        3: 2,
+        4: 3,
+        5: 4,
+        6: 5,
+        7: 6,
+        13: 7,
+        14: 8,
+        130: 9,
+        140: 10,
+    }
+
     # Convert columns to specified data types
     for col, dtype in COL_DTYPES.items():
         comb_df[col] = comb_df[col].astype(dtype)
+
+    comb_df["label"] = comb_df["label"].replace(label_mapping)
 
     return comb_df
 

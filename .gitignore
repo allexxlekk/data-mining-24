@@ -52,3 +52,5 @@ docs/_build/
 # Added files to ignore
 test*
 *:Zone.Identifier
+models/
+output/df.csv
