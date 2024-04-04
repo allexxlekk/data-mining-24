@@ -2,38 +2,49 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     accuracy_score,
-    precision_score,
-    recall_score,
-    f1_score,
     confusion_matrix,
     roc_auc_score,
     classification_report,
 )
 import tensorflow as tf
 from keras.models import Sequential
+import tensorflow_decision_forests as tfdf
+from sklearn.ensemble import RandomForestClassifier
+import joblib
+from os.path import exists
+from keras.models import load_model
 
-LABEL_DICT = {
-    1: "walking",
-    2: "running",
-    3: "shuffling",
-    4: "stairs (ascending)",
-    5: "stairs (descending)",
-    6: "standing",
-    7: "sitting",
-    8: "lying",
-    13: "cycling (sit)",
-    14: "cycling (stand)",
-    130: "cycling (sit, inactive)",
-    140: "cycling (stand, inactive)",
+LABEL_LIST = {
+    "walking",
+    "running",
+    "shuffling",
+    "stairs (ascending)",
+    "stairs (descending)",
+    "standing",
+    "sitting",
+    "lying",
+    "cycling (sit)",
+    "cycling (stand)",
+    "cycling (sit, inactive)",
+    "cycling (stand, inactive)",
 }
+
+FEATURES = [
+    "ID",
+    "time_step",
+    "back_x",
+    "back_y",
+    "back_z",
+    "thigh_x",
+    "thigh_y",
+    "thigh_z",
+]
 
 
 def preprocessData_v2(
     df: pd.DataFrame, train_subjects=None, test_subjects=None
 ) -> list:
     """Prepares inputs (features and labels) for trainning and testing classifiers."""
-
-    features = ["back_x", "back_y", "back_z", "thigh_x", "thigh_y", "thigh_z"]
 
     # One-hot encode the label column
     one_hot_encoded = pd.get_dummies(df["label"], dtype=float)
@@ -65,8 +76,8 @@ def preprocessData_v2(
             )
         ].drop(labels="ID", axis=1)
         # Shuffle dataframe rows
-        train_df = first_ids_df.sample(frac=1).reset_index(drop=True)
-        test_df = next_ids_df.sample(frac=1).reset_index(drop=True)
+        train_df = first_ids_df.sample(frac=1, random_state=7).reset_index(drop=True)
+        test_df = next_ids_df.sample(frac=1, random_state=7).reset_index(drop=True)
     else:
         # Shuffle dataframe rows
         df = df.sample(frac=1).reset_index(drop=True)
@@ -78,8 +89,8 @@ def preprocessData_v2(
 
     # print("Train df:\n", train_df, "\n\nTest df:\n", test_df)
 
-    X_train = np.array(train_df[features])
-    X_test = np.array(test_df[features])
+    X_train = np.array(train_df[FEATURES])
+    X_test = np.array(test_df[FEATURES])
     y_train = np.array(train_df["label"])
     y_test = np.array(test_df["label"])
     y_train_OHE = np.array(train_df[classes])
@@ -92,28 +103,47 @@ def preprocessData_v2(
     print("Training Labels OHE Shape:", y_train_OHE.shape)
     print("Testing Labels OHE Shape:", y_test_OHE.shape)
 
-    return [df, X_train, X_test, y_train, y_test, y_train_OHE, y_test_OHE]
+    return [
+        df,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        y_train_OHE,
+        y_test_OHE,
+        train_df,
+        test_df,
+    ]
 
 
-def evaluateClassifier(cl, X_test, y_test) -> None:  # , classes) -> None:
-    print("\nEvaluating classifier...")
-    y_pred = cl.predict(X_test)
-    y_pred_proba = cl.predict_proba(X_test)
+def evaluateClassifier(
+    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential,
+    X_test=None,
+    y_test=None,
+    y_test_OHE=None,
+    test_df=None,
+) -> None:  # , classes) -> None:
+    print(f"\nEvaluating {type(cl)} classifier...")
+    if type(cl) == RandomForestClassifier:
+        y_pred = cl.predict(X_test)
+        y_pred_proba = cl.predict_proba(X_test)
+    else:
+        if type(cl) == tfdf.keras.RandomForestModel:
+            test_df = test_df[FEATURES + ["label"]]
+            X_test = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="label")
+        y_pred_proba = cl.predict(X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
 
     # Calculate evaluation metrics
     accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, average="weighted", zero_division=0)
-    recall = recall_score(y_test, y_pred, average="weighted", zero_division=0)
-    f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
-    auc = roc_auc_score(y_test, y_pred_proba, multi_class="ovr")
+    auc = roc_auc_score(y_test_OHE, y_pred_proba, multi_class="ovr")
     conf_matrix = confusion_matrix(y_test, y_pred)
-    class_rep = classification_report(y_test, y_pred)
+    class_rep = classification_report(
+        y_test, y_pred, target_names=LABEL_LIST, zero_division=0
+    )
 
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1 Score: {f1:.4f}")
-    print(f"AUC: {auc:.4f}")
+    print(f"Accuracy: {accuracy:.2f}")
+    print(f"AUC: {auc:.2f}")
     print("Confusion Matrix:\n", conf_matrix)
     print("Classification Report:\n", class_rep)
 
@@ -152,3 +182,93 @@ def trainNNmodel(
         verbose=1,
     )
     return (model, history)
+
+
+def trainRFClassifier_tf(train_df) -> tuple[tfdf.keras.RandomForestModel, list]:
+    train_df = train_df[FEATURES + ["label"]]
+    train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="label")
+
+    model = tfdf.keras.RandomForestModel()
+    model.compile(optimizer="Adam", loss="binary_crossentropy", metrics=["accuracy"])
+    history = model.fit(train_ds)
+
+    return (model, history)
+
+
+def getModelPath(
+    cl_type,
+    max_subjects=23,
+    train_subjects=None,
+    test_subjects=None,
+    models_path="models",
+):
+    if cl_type.__name__ == "RandomForestClassifier":
+        extension = "joblib"
+        model_class = "sklearn_RF"
+    else:
+        extension = "keras"
+        if cl_type.__name__ == "Sequential":
+            model_class = "keras_NN"
+        else:
+            model_class = "keras_RF"
+
+    split_str = (
+        f"{train_subjects}_{test_subjects}"
+        if train_subjects is not None and test_subjects is not None
+        else "no"
+    )
+
+    path = f"{models_path}/{model_class}_classifier_{max_subjects}_max_subjects_{split_str}_split.{extension}"
+
+    return path
+
+
+def saveModel(
+    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential,
+    max_subjects,
+    train_subjects=None,
+    test_subjects=None,
+    models_path="models",
+) -> None:
+    """Generates path to save the trained model and saves it."""
+
+    cl_type = type(cl)
+    path = getModelPath(
+        cl_type, max_subjects, train_subjects, test_subjects, models_path
+    )
+
+    if not exists(path):
+        if cl_type == RandomForestClassifier:
+            joblib.dump(cl, path)
+        else:
+            cl.save(path)
+    else:
+        print(f"File {path} already exists!")
+
+
+def loadClassifiers(
+    cl_types: list = [
+        tfdf.keras.RandomForestModel,
+        RandomForestClassifier,
+        Sequential,
+    ],
+    models_path="models/only_sensors",
+    max_subjects=23,
+    train_subjects=None,
+    test_subjects=None,
+) -> list:
+    classifiers = []
+    for cl_type in cl_types:
+        print(cl_type.__name__)
+        path = getModelPath(
+            cl_type, max_subjects, train_subjects, test_subjects, models_path
+        )
+        if exists(path):
+            print(f"Found classifier {path}. Adding it to the classifiers list.")
+            if cl_type.__name__ == "RandomForestClassifier":
+                classifiers.append(joblib.load(path))
+            else:
+                print(cl_type.__name__)
+                classifiers.append(load_model(path))
+
+    return classifiers

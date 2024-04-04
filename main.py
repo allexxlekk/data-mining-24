@@ -1,13 +1,16 @@
 import functions as fn
 import classifiers as cl
-import joblib
 from sklearn.ensemble import RandomForestClassifier
-from keras.models import load_model
 
-## RF settings
+# Dataset parameters
+MAX_SUBJECTS = 23
+TRAIN_SUBJECTS = None
+TEST_SUBJECTS = None
+
+## RF parameters
 N_TREES = 100
 
-## Neural network settings
+## Neural network parameters
 EPOCHS = 20
 BATCH_SIZE = 10
 # Early stopping (metric=val_accuracy)
@@ -16,35 +19,67 @@ PATIENCE = 5
 
 
 def main():
-    df = fn.readDataset(max_subjects=2)
+    df = fn.readDataset(max_subjects=MAX_SUBJECTS)
 
-    [df, X_train, X_test, y_train, y_test, y_train_OHE, y_test_OHE] = (
-        cl.preprocessData_v2(df)
-    )
-    print("Saving preprocessed dataframe to file...")
-    df.to_csv("output/df.csv", index=False)
+    [
+        df,
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        y_train_OHE,
+        y_test_OHE,
+        train_df,
+        test_df,
+    ] = cl.preprocessData_v2(df, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
-    ######## Train classifiers on train data and then evaluate them on test Data
+    usr_in = ""
+    while usr_in != "y" and usr_in != "n":
+        usr_in = input(
+            "Do you want to preload models? Type 'y' for yes and 'n' for no and then hit enter."
+        )
+    if usr_in == "y":
+        classifiers = cl.loadClassifiers()
+    else:
+        #### Train classifiers
+        ## Random Forest (tensorflow)
+        print("Training Random Forest (tf) classifier...")
+        (rf_model_tf, rf_history) = cl.trainRFClassifier_tf(train_df)
 
-    print("Training Random Forest classifier...")
-    rf_classifier = RandomForestClassifier(n_estimators=N_TREES, random_state=7)
-    rf_classifier.fit(X_train, y_train)
-    joblib.dump(rf_classifier, "models/rf_classifier.joblib")
-    cl.evaluateClassifier(rf_classifier, X_test, y_test)
+        ## Random Forest (sklearn)
+        print("Training Random Forest classifier...")
+        rf_classifier = RandomForestClassifier(n_estimators=N_TREES, random_state=7)
+        rf_classifier = rf_classifier.fit(X_train, y_train)
 
-    #### Neural Network Classifier
-    print("Training Neural Network classifier...")
-    (nn_model, history) = cl.trainNNmodel(
-        X_train, y_train_OHE, EPOCHS, BATCH_SIZE, MIN_DELTA, PATIENCE
-    )
-    nn_model.evaluate(X_test, y_test_OHE)
-    nn_model.save("models/nn_model.keras")
+        ## Neural Network
+        print("Training Neural Network classifier...")
+        (nn_model, nn_history) = cl.trainNNmodel(
+            X_train,
+            y_train_OHE,
+            epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            min_delta=MIN_DELTA,
+            patience=PATIENCE,
+        )
 
-    #### Bayesian Networks Classifier
+        classifiers = [nn_model, rf_model_tf, rf_classifier]
 
-    ## Load pre-trained classifiers
-    rf_classifier = joblib.load("models/rf_classifier.joblib")
-    nn_model = load_model("models/nn_model.keras")
+    for classifier in classifiers:
+        print(f"\Saving {type(classifier)} model...")
+        cl.saveModel(
+            classifier,
+            max_subjects=MAX_SUBJECTS,
+            train_subjects=TRAIN_SUBJECTS,
+            test_subjects=TEST_SUBJECTS,
+        )
+        print(f"\nEvaluating {type(classifier)} model...")
+        cl.evaluateClassifier(
+            classifier,
+            X_test=X_test,
+            y_test=y_test,
+            test_df=test_df,
+            y_test_OHE=y_test_OHE,
+        )
 
 
 if __name__ == "__main__":

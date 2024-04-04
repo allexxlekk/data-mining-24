@@ -40,7 +40,7 @@ def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def readDataset(folder_path="harth/", max_subjects=22) -> pd.DataFrame:
+def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
     """Reads original csv files and loads them into a dataframe."""
 
     if max_subjects < 1:
@@ -54,7 +54,7 @@ def readDataset(folder_path="harth/", max_subjects=22) -> pd.DataFrame:
 
     # Iterate over each CSV file and read it into a DataFrame
     for idx, csv_file in enumerate(csv_files):
-        if idx > max_subjects:
+        if idx >= max_subjects:
             break
         file_path = os.path.join(folder_path, csv_file)
         df = pd.read_csv(file_path, quoting=csv.QUOTE_NONE)
@@ -76,10 +76,11 @@ def readDataset(folder_path="harth/", max_subjects=22) -> pd.DataFrame:
         5: 4,
         6: 5,
         7: 6,
-        13: 7,
-        14: 8,
-        130: 9,
-        140: 10,
+        8: 7,
+        13: 8,
+        14: 9,
+        130: 10,
+        140: 11,
     }
 
     # Convert columns to specified data types
