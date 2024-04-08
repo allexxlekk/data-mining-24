@@ -20,66 +20,42 @@ PATIENCE = 5
 
 def main():
     df = fn.readDataset(max_subjects=MAX_SUBJECTS)
-
-    [
-        df,
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        y_train_OHE,
-        y_test_OHE,
-        train_df,
-        test_df,
-    ] = cl.preprocessData_v2(df, TRAIN_SUBJECTS, TEST_SUBJECTS)
+    data = cl.preprocessData(df, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
     usr_in = ""
     while usr_in != "y" and usr_in != "n":
         usr_in = input(
-            "Do you want to preload models? Type 'y' for yes and 'n' for no and then hit enter."
-        )
+            "Do you want to preload models? Type 'y' for yes and 'n' for no and then hit enter.\n"
+        ).lower()
     if usr_in == "y":
         classifiers = cl.loadClassifiers()
+        [cl.evaluateClassifier(classifier, data) for classifier in classifiers]
     else:
         #### Train classifiers
-        ## Random Forest (tensorflow)
-        print("Training Random Forest (tf) classifier...")
-        (rf_model_tf, rf_history) = cl.trainRFClassifier_tf(train_df)
-
-        ## Random Forest (sklearn)
-        print("Training Random Forest classifier...")
-        rf_classifier = RandomForestClassifier(n_estimators=N_TREES, random_state=7)
-        rf_classifier = rf_classifier.fit(X_train, y_train)
-
-        ## Neural Network
+        ## Neural Network (tf Sequential model)
         print("Training Neural Network classifier...")
         (nn_model, nn_history) = cl.trainNNmodel(
-            X_train,
-            y_train_OHE,
+            data,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             min_delta=MIN_DELTA,
             patience=PATIENCE,
         )
+        cl.evaluateClassifier(nn_model, data)
+        cl.saveModel(nn_model, MAX_SUBJECTS)
 
-        classifiers = [nn_model, rf_model_tf, rf_classifier]
+        ## Random Forest (tensorflow)
+        print("Training Random Forest (tf) classifier...")
+        (rf_model_tf, rf_history) = cl.trainRFClassifier_tf(data)
+        cl.evaluateClassifier(rf_model_tf, data)
+        cl.saveModel(rf_model_tf, MAX_SUBJECTS)
 
-    for classifier in classifiers:
-        print(f"\Saving {type(classifier)} model...")
-        cl.saveModel(
-            classifier,
-            max_subjects=MAX_SUBJECTS,
-            train_subjects=TRAIN_SUBJECTS,
-            test_subjects=TEST_SUBJECTS,
-        )
-        print(f"\nEvaluating {type(classifier)} model...")
-        cl.evaluateClassifier(
-            classifier,
-            X_test=X_test,
-            y_test=y_test,
-            test_df=test_df,
-            y_test_OHE=y_test_OHE,
-        )
+        ## Random Forest (sklearn)
+        print("Training Random Forest classifier...")
+        rf_classifier = RandomForestClassifier(n_estimators=N_TREES, random_state=7)
+        rf_classifier = rf_classifier.fit(data["X_train"], data["y_train"])
+        cl.evaluateClassifier(rf_classifier, data)
+        cl.saveModel(rf_classifier, MAX_SUBJECTS)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from sklearn.ensemble import RandomForestClassifier
 import joblib
 from os.path import exists
 from keras.models import load_model
+from sklearn.preprocessing import StandardScaler
 
 LABEL_LIST = {
     "walking",
@@ -31,7 +32,15 @@ LABEL_LIST = {
 
 FEATURES = [
     "ID",
-    "time_step",
+    # "time_step",
+    "month",
+    "day",
+    "hour_cos",
+    "hour_sin",
+    "minute_cos",
+    "minute_sin",
+    "day_of_week_cos",
+    "day_of_week_sin",
     "back_x",
     "back_y",
     "back_z",
@@ -41,21 +50,26 @@ FEATURES = [
 ]
 
 
-def preprocessData_v2(
-    df: pd.DataFrame, train_subjects=None, test_subjects=None
-) -> list:
+def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) -> dict:
     """Prepares inputs (features and labels) for trainning and testing classifiers."""
 
-    # One-hot encode the label column
-    one_hot_encoded = pd.get_dummies(df["label"], dtype=float)
+    # Standardize numerical features
+    numerical_columns = FEATURES.copy()
+    numerical_columns.remove("ID")
+    scaler = StandardScaler()
+    df[numerical_columns] = scaler.fit_transform(df[numerical_columns])
+
+    data = {}
+
+    # One-hot encode the label and ID columns
+    labels_OHE = pd.get_dummies(df["label"], dtype=float, prefix="label")
+    id_OHE = pd.get_dummies(df["ID"], dtype=float, prefix="id")
 
     # Concatenate one-hot encoded columns with the original dataframe
-    df = pd.concat([df, one_hot_encoded], axis=1)
+    data["df"] = pd.concat([df, labels_OHE, id_OHE], axis=1)
 
-    # Get the "label" column index
-    label_index = df.columns.get_loc("label")
-    # Select columns after the "label" column
-    classes = df.columns[label_index + 1 :].tolist()
+    label_columns = labels_OHE.columns.tolist()
+    id_columns = id_OHE.columns.tolist()
 
     if train_subjects != None and test_subjects != None:
         unique_subject_ids = df["ID"].unique()
@@ -67,79 +81,80 @@ def preprocessData_v2(
             test_subjects = 5
 
         # Seperate the data into train and test subjects based on user's choice
-        first_ids_df = df[df["ID"].isin(unique_subject_ids[:train_subjects])].drop(
-            labels="ID", axis=1
-        )
-        next_ids_df = df[
-            df["ID"].isin(
+        first_ids_df = data["df"][
+            data["df"]["ID"].isin(unique_subject_ids[:train_subjects])
+        ]  # .drop(labels="ID", axis=1)
+        next_ids_df = data["df"][
+            data["df"]["ID"].isin(
                 unique_subject_ids[train_subjects : train_subjects + test_subjects]
             )
-        ].drop(labels="ID", axis=1)
+        ]  # .drop(labels="ID", axis=1)
         # Shuffle dataframe rows
-        train_df = first_ids_df.sample(frac=1, random_state=7).reset_index(drop=True)
-        test_df = next_ids_df.sample(frac=1, random_state=7).reset_index(drop=True)
+        data["train_df"] = first_ids_df.sample(frac=1, random_state=7).reset_index(
+            drop=True
+        )
+        data["test_df"] = next_ids_df.sample(frac=1, random_state=7).reset_index(
+            drop=True
+        )
     else:
         # Shuffle dataframe rows
-        df = df.sample(frac=1).reset_index(drop=True)
+        data["df"] = data["df"].sample(frac=1).reset_index(drop=True)
         # Calculate the index to split the dataframe
-        split_index = int(0.7 * len(df))
+        split_index = int(0.7 * len(data["df"]))
         # Split the dataframe into train and test sets
-        train_df = df.iloc[:split_index]
-        test_df = df.iloc[split_index:]
+        data["train_df"] = data["df"].iloc[:split_index]
+        data["test_df"] = data["df"].iloc[split_index:]
 
     # print("Train df:\n", train_df, "\n\nTest df:\n", test_df)
 
-    X_train = np.array(train_df[FEATURES])
-    X_test = np.array(test_df[FEATURES])
-    y_train = np.array(train_df["label"])
-    y_test = np.array(test_df["label"])
-    y_train_OHE = np.array(train_df[classes])
-    y_test_OHE = np.array(test_df[classes])
+    nn_features = FEATURES.copy() + id_columns
+    nn_features.remove("ID")
+    data["nn_features"] = nn_features
+    # print(nn_features, len(nn_features))
 
-    print("Training Features Shape:", X_train.shape)
-    print("Testing Features Shape:", X_test.shape)
-    print("Training Labels Shape:", y_train.shape)
-    print("Testing Labels Shape:", y_test.shape)
-    print("Training Labels OHE Shape:", y_train_OHE.shape)
-    print("Testing Labels OHE Shape:", y_test_OHE.shape)
+    data["X_train"] = np.array(data["train_df"][FEATURES])
+    data["X_test"] = np.array(data["test_df"][FEATURES])
+    data["X_train_NN"] = np.array(data["train_df"][nn_features])
+    data["X_test_NN"] = np.array(data["test_df"][nn_features])
+    data["y_train"] = np.array(data["train_df"]["label"])
+    data["y_test"] = np.array(data["test_df"]["label"])
+    data["y_train_NN"] = np.array(data["train_df"][label_columns])
+    data["y_test_NN"] = np.array(data["test_df"][label_columns])
 
-    return [
-        df,
-        X_train,
-        X_test,
-        y_train,
-        y_test,
-        y_train_OHE,
-        y_test_OHE,
-        train_df,
-        test_df,
-    ]
+    print("Training Features Shape:", data["X_train"].shape)
+    print("Testing Features Shape:", data["X_test"].shape)
+    print("Training NN Features Shape:", data["X_train_NN"].shape)
+    print("Testing NN Features Shape:", data["X_test_NN"].shape)
+    print("Training Labels Shape:", data["y_train"].shape)
+    print("Testing Labels Shape:", data["y_test"].shape)
+    print("Training Labels OHE Shape:", data["y_train_NN"].shape)
+    print("Testing Labels OHE Shape:", data["y_test_NN"].shape)
+
+    return data
 
 
 def evaluateClassifier(
-    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential,
-    X_test=None,
-    y_test=None,
-    y_test_OHE=None,
-    test_df=None,
+    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential, data: dict
 ) -> None:  # , classes) -> None:
     print(f"\nEvaluating {type(cl)} classifier...")
     if type(cl) == RandomForestClassifier:
-        y_pred = cl.predict(X_test)
-        y_pred_proba = cl.predict_proba(X_test)
+        y_pred = cl.predict(data["X_test"])
+        y_pred_proba = cl.predict_proba(data["X_test"])
     else:
         if type(cl) == tfdf.keras.RandomForestModel:
-            test_df = test_df[FEATURES + ["label"]]
-            X_test = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="label")
-        y_pred_proba = cl.predict(X_test)
+            test_df = data["test_df"][data["nn_features"] + ["label"]]
+            test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="label")
+            y_pred_proba = cl.predict(test_ds)
+        else:
+            y_pred_proba = cl.predict(data["X_test_NN"])
         y_pred = np.argmax(y_pred_proba, axis=1)
 
     # Calculate evaluation metrics
-    accuracy = accuracy_score(y_test, y_pred)
-    auc = roc_auc_score(y_test_OHE, y_pred_proba, multi_class="ovr")
-    conf_matrix = confusion_matrix(y_test, y_pred)
+    accuracy = accuracy_score(data["y_test"], y_pred)
+    auc = roc_auc_score(data["y_test_NN"], y_pred_proba, multi_class="ovr")
+    conf_matrix = confusion_matrix(data["y_test"], y_pred)
     class_rep = classification_report(
-        y_test, y_pred, target_names=LABEL_LIST, zero_division=0
+        data["y_test"], y_pred, target_names=LABEL_LIST, zero_division=0
     )
 
     print(f"Accuracy: {accuracy:.2f}")
@@ -149,14 +164,16 @@ def evaluateClassifier(
 
 
 def trainNNmodel(
-    X_train, y_train, epochs=50, batch_size=10, min_delta=0.001, patience=5
+    data, epochs=50, batch_size=10, min_delta=0.001, patience=5
 ) -> tuple[Sequential, list]:
     model = Sequential()
     model.add(
-        tf.keras.layers.Dense(64, input_shape=(X_train.shape[1],), activation="relu")
+        tf.keras.layers.Dense(
+            64, input_shape=(data["X_train_NN"].shape[1],), activation="relu"
+        )
     )
     model.add(tf.keras.layers.Dense(32, activation="relu"))
-    model.add(tf.keras.layers.Dense(y_train.shape[1], activation="sigmoid"))
+    model.add(tf.keras.layers.Dense(data["y_train_NN"].shape[1], activation="sigmoid"))
     model.summary()
 
     model.compile(optimizer="Adam", loss="binary_crossentropy", metrics=["accuracy"])
@@ -172,8 +189,8 @@ def trainNNmodel(
 
     # now we just update our model fit call
     history = model.fit(
-        X_train,
-        y_train,
+        data["X_train_NN"],
+        data["y_train_NN"],
         callbacks=[early_stopping_cb],
         epochs=epochs,
         batch_size=batch_size,
@@ -184,8 +201,10 @@ def trainNNmodel(
     return (model, history)
 
 
-def trainRFClassifier_tf(train_df) -> tuple[tfdf.keras.RandomForestModel, list]:
-    train_df = train_df[FEATURES + ["label"]]
+def trainRFClassifier_tf(data: dict) -> tuple[tfdf.keras.RandomForestModel, list]:
+    # tf_ds_cols = FEATURES + ["label"]
+    tf_ds_cols = data["nn_features"] + ["label"]
+    train_df = data["train_df"][tf_ds_cols]
     train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="label")
 
     model = tfdf.keras.RandomForestModel()
@@ -259,7 +278,7 @@ def loadClassifiers(
 ) -> list:
     classifiers = []
     for cl_type in cl_types:
-        print(cl_type.__name__)
+        print(f"Looking for classifier of type: {cl_type.__name__}...")
         path = getModelPath(
             cl_type, max_subjects, train_subjects, test_subjects, models_path
         )
@@ -270,5 +289,7 @@ def loadClassifiers(
             else:
                 print(cl_type.__name__)
                 classifiers.append(load_model(path))
+        else:
+            print(f"Didn't find classifier in path: {path}.")
 
     return classifiers

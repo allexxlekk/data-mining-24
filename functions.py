@@ -4,19 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import csv
-
-COL_DTYPES = {
-    "ID": "int",
-    "time_step": "int",
-    "timestamp": "object",
-    "back_x": "float",
-    "back_y": "float",
-    "back_z": "float",
-    "thigh_x": "float",
-    "thigh_y": "float",
-    "thigh_z": "float",
-    "label": "int",
-}
+import numpy as np
 
 
 def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
@@ -40,6 +28,29 @@ def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def preprocessTimestamp(df: pd.DataFrame) -> pd.DataFrame:
+    date_time = pd.to_datetime(df["timestamp"])
+
+    # Drop unneeded columns
+    columns_to_drop = ["timestamp", "index", "Unnamed: 0"]
+    for col in columns_to_drop:
+        if col in df.columns:
+            df.drop(col, axis=1, inplace=True)
+
+    # df["year"] = date_time.dt.year
+    df["month"] = date_time.dt.month
+    df["day"] = date_time.dt.day
+
+    # Encode cyclic features as sine and cosine waves
+    df["hour_sin"] = np.sin(2 * np.pi * date_time.dt.hour / 23.0)
+    df["hour_cos"] = np.cos(2 * np.pi * date_time.dt.hour / 23.0)
+    df["minute_sin"] = np.sin(2 * np.pi * date_time.dt.minute / 59.0)
+    df["minute_cos"] = np.cos(2 * np.pi * date_time.dt.minute / 59.0)
+    df["day_of_week_sin"] = np.sin(2 * np.pi * date_time.dt.dayofweek / 6.0)
+    df["day_of_week_cos"] = np.cos(2 * np.pi * date_time.dt.dayofweek / 6.0)
+    return df
+
+
 def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
     """Reads original csv files and loads them into a dataframe."""
 
@@ -60,12 +71,13 @@ def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
         df = pd.read_csv(file_path, quoting=csv.QUOTE_NONE)
         # Add subject IDs
         df["ID"] = idx
-        df = convertTimestampToTimeStep(df)
-        data.append(df[COL_DTYPES.keys()].values)
+        # df = convertTimestampToTimeStep(df)
+        df = preprocessTimestamp(df)
+        data.append(df.values)
 
     # Combine data from all CSV files into a single array
     combined_data = np.concatenate(data)
-    comb_df = pd.DataFrame(combined_data, columns=COL_DTYPES.keys())
+    comb_df = pd.DataFrame(combined_data, columns=df.columns)
 
     # Redefine labels to be contiguous integers starting from 0
     label_mapping = {
@@ -84,8 +96,8 @@ def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
     }
 
     # Convert columns to specified data types
-    for col, dtype in COL_DTYPES.items():
-        comb_df[col] = comb_df[col].astype(dtype)
+    for column in comb_df.columns.to_list():
+        comb_df[column] = comb_df[column].astype(float)
 
     comb_df["label"] = comb_df["label"].replace(label_mapping)
 
