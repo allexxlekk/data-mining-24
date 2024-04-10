@@ -14,6 +14,7 @@ import joblib
 from os.path import exists
 from keras.models import load_model
 from sklearn.preprocessing import StandardScaler
+from sklearn.naive_bayes import GaussianNB
 
 LABEL_LIST = {
     "walking",
@@ -148,12 +149,12 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
 
 
 def evaluateClassifier(
-    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential, data: dict
+    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
+    data: dict,
 ) -> None:  # , classes) -> None:
     print(f"\nEvaluating {type(cl)} classifier...")
     print(f"Features: {data['nn_features']}")
-    if type(cl) == RandomForestClassifier:
-        y_pred = cl.predict(data["X_test"])
+    if type(cl) == RandomForestClassifier or type(cl) == GaussianNB:
         y_pred_proba = cl.predict_proba(data["X_test"])
     else:
         if type(cl) == tfdf.keras.RandomForestModel:
@@ -162,7 +163,7 @@ def evaluateClassifier(
             y_pred_proba = cl.predict(test_ds)
         else:
             y_pred_proba = cl.predict(data["X_test_NN"])
-        y_pred = np.argmax(y_pred_proba, axis=1)
+    y_pred = np.argmax(y_pred_proba, axis=1)
 
     # Calculate evaluation metrics
     accuracy = accuracy_score(data["y_test"], y_pred)
@@ -237,6 +238,9 @@ def getModelPath(
     if cl_type.__name__ == "RandomForestClassifier":
         extension = "joblib"
         model_class = "sklearn_RF"
+    elif cl_type.__name__ == "GaussianNB":
+        extension = "joblib"
+        model_class = "sklearn_GNB"
     else:
         extension = "keras"
         if cl_type.__name__ == "Sequential":
@@ -256,7 +260,7 @@ def getModelPath(
 
 
 def saveModel(
-    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential,
+    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
     max_subjects,
     train_subjects=None,
     test_subjects=None,
@@ -270,7 +274,7 @@ def saveModel(
     )
 
     if not exists(path):
-        if cl_type == RandomForestClassifier:
+        if cl_type == RandomForestClassifier or cl_type == GaussianNB:
             joblib.dump(cl, path)
         else:
             cl.save(path)
@@ -283,6 +287,7 @@ def loadClassifiers(
         tfdf.keras.RandomForestModel,
         RandomForestClassifier,
         Sequential,
+        GaussianNB,
     ],
     models_path="models",
     max_subjects=23,

@@ -1,6 +1,7 @@
 import functions as fn
 import classifiers as cl
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
 
 # Dataset parameters
 MAX_SUBJECTS = 22
@@ -56,6 +57,13 @@ def main():
         rf_classifier = rf_classifier.fit(data["X_train"], data["y_train"])
         cl.evaluateClassifier(rf_classifier, data)
         cl.saveModel(rf_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
+
+        ## Gaussian Naive Bayes
+        print("Training Gaussian Naive Bayes classifier...")
+        gnb_classifier = GaussianNB()
+        gnb_classifier.fit(data["X_train"], data["y_train"])
+        cl.evaluateClassifier(gnb_classifier, data)
+        cl.saveModel(gnb_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
 
 if __name__ == "__main__":
