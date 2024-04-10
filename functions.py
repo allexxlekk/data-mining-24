@@ -29,15 +29,15 @@ def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def preprocessTimestamp(df: pd.DataFrame) -> pd.DataFrame:
+    df = convertTimestampToTimeStep(df)
     date_time = pd.to_datetime(df["timestamp"])
-
     # Drop unneeded columns
     columns_to_drop = ["timestamp", "index", "Unnamed: 0"]
     for col in columns_to_drop:
         if col in df.columns:
             df.drop(col, axis=1, inplace=True)
 
-    # df["year"] = date_time.dt.year
+    df["year"] = date_time.dt.year
     df["month"] = date_time.dt.month
     df["day"] = date_time.dt.day
 

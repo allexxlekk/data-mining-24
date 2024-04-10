@@ -31,16 +31,17 @@ LABEL_LIST = {
 }
 
 FEATURES = [
-    "ID",
+    # "ID",
     # "time_step",
-    "month",
-    "day",
-    "hour_cos",
-    "hour_sin",
-    "minute_cos",
-    "minute_sin",
-    "day_of_week_cos",
-    "day_of_week_sin",
+    # "year",
+    # "month",
+    # "day",
+    # "hour_cos",
+    # "hour_sin",
+    # "minute_cos",
+    # "minute_sin",
+    # "day_of_week_cos",
+    # "day_of_week_sin",
     "back_x",
     "back_y",
     "back_z",
@@ -53,42 +54,48 @@ FEATURES = [
 def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) -> dict:
     """Prepares inputs (features and labels) for trainning and testing classifiers."""
 
-    # Standardize numerical features
-    numerical_columns = FEATURES.copy()
-    numerical_columns.remove("ID")
-    scaler = StandardScaler()
-    df[numerical_columns] = scaler.fit_transform(df[numerical_columns])
-
-    data = {}
-
     # One-hot encode the label and ID columns
     labels_OHE = pd.get_dummies(df["label"], dtype=float, prefix="label")
     id_OHE = pd.get_dummies(df["ID"], dtype=float, prefix="id")
+    label_columns = labels_OHE.columns.tolist()
+
+    # Standardize numerical features
+    numerical_columns = FEATURES.copy()
+    nn_features = FEATURES.copy()
+    if "ID" in FEATURES:
+        numerical_columns.remove("ID")
+        nn_features.remove("ID")
+        id_columns = id_OHE.columns.tolist()
+        nn_features += id_columns
+
+    scaler = StandardScaler()
+    df[numerical_columns] = scaler.fit_transform(df[numerical_columns])
 
     # Concatenate one-hot encoded columns with the original dataframe
+    data = {}
     data["df"] = pd.concat([df, labels_OHE, id_OHE], axis=1)
-
-    label_columns = labels_OHE.columns.tolist()
-    id_columns = id_OHE.columns.tolist()
 
     if train_subjects != None and test_subjects != None:
         unique_subject_ids = df["ID"].unique()
         if train_subjects + test_subjects > len(unique_subject_ids):
             print(
-                f"Train and test subjects exceed total subjects (22)! Setting train subjects to 17 and test subjects to 5."
+                f"Train and test subjects exceed total subjects {len(unique_subject_ids)}!"
             )
-            train_subjects = 17
-            test_subjects = 5
+            train_subjects = int(len(unique_subject_ids) * 2 / 3)
+            test_subjects = int(len(unique_subject_ids) * 1 / 3)
+            print(
+                f"Setting train subjects to {train_subjects} and subjects to {test_subjects}"
+            )
 
         # Seperate the data into train and test subjects based on user's choice
         first_ids_df = data["df"][
             data["df"]["ID"].isin(unique_subject_ids[:train_subjects])
-        ]  # .drop(labels="ID", axis=1)
+        ]
         next_ids_df = data["df"][
             data["df"]["ID"].isin(
                 unique_subject_ids[train_subjects : train_subjects + test_subjects]
             )
-        ]  # .drop(labels="ID", axis=1)
+        ]
         # Shuffle dataframe rows
         data["train_df"] = first_ids_df.sample(frac=1, random_state=7).reset_index(
             drop=True
@@ -105,13 +112,7 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
         data["train_df"] = data["df"].iloc[:split_index]
         data["test_df"] = data["df"].iloc[split_index:]
 
-    # print("Train df:\n", train_df, "\n\nTest df:\n", test_df)
-
-    nn_features = FEATURES.copy() + id_columns
-    nn_features.remove("ID")
     data["nn_features"] = nn_features
-    # print(nn_features, len(nn_features))
-
     data["X_train"] = np.array(data["train_df"][FEATURES])
     data["X_test"] = np.array(data["test_df"][FEATURES])
     data["X_train_NN"] = np.array(data["train_df"][nn_features])
@@ -130,6 +131,19 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
     print("Training Labels OHE Shape:", data["y_train_NN"].shape)
     print("Testing Labels OHE Shape:", data["y_test_NN"].shape)
 
+    column_sums_train = data["train_df"][label_columns].sum()
+    total_sum_train = column_sums_train.sum()
+    column_sum_train_percentages = round((column_sums_train / total_sum_train) * 100, 2)
+
+    column_sums_test = data["test_df"][label_columns].sum()
+    total_sum_test = column_sums_test.sum()
+    column_sum_test_percentages = round((column_sums_test / total_sum_test) * 100, 2)
+
+    print("Train df label distribution:")
+    print(column_sum_train_percentages)
+    print("Test df label distribution:")
+    print(column_sum_test_percentages)
+
     return data
 
 
@@ -137,6 +151,7 @@ def evaluateClassifier(
     cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential, data: dict
 ) -> None:  # , classes) -> None:
     print(f"\nEvaluating {type(cl)} classifier...")
+    print(f"Features: {data['nn_features']}")
     if type(cl) == RandomForestClassifier:
         y_pred = cl.predict(data["X_test"])
         y_pred_proba = cl.predict_proba(data["X_test"])
@@ -156,7 +171,6 @@ def evaluateClassifier(
     class_rep = classification_report(
         data["y_test"], y_pred, target_names=LABEL_LIST, zero_division=0
     )
-
     print(f"Accuracy: {accuracy:.2f}")
     print(f"AUC: {auc:.2f}")
     print("Confusion Matrix:\n", conf_matrix)
@@ -202,7 +216,6 @@ def trainNNmodel(
 
 
 def trainRFClassifier_tf(data: dict) -> tuple[tfdf.keras.RandomForestModel, list]:
-    # tf_ds_cols = FEATURES + ["label"]
     tf_ds_cols = data["nn_features"] + ["label"]
     train_df = data["train_df"][tf_ds_cols]
     train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="label")
@@ -271,7 +284,7 @@ def loadClassifiers(
         RandomForestClassifier,
         Sequential,
     ],
-    models_path="models/only_sensors",
+    models_path="models",
     max_subjects=23,
     train_subjects=None,
     test_subjects=None,
