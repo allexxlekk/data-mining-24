@@ -6,7 +6,6 @@ from sklearn.metrics import (
     roc_auc_score,
     classification_report,
 )
-import tensorflow as tf
 from keras.models import Sequential
 import tensorflow_decision_forests as tfdf
 from sklearn.ensemble import RandomForestClassifier
@@ -15,6 +14,9 @@ from os.path import exists
 from keras.models import load_model
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import GaussianNB
+from keras.layers import Dense, Dropout
+from keras import Input
+from keras.callbacks import EarlyStopping
 
 LABEL_LIST = {
     "walking",
@@ -69,6 +71,7 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
         id_columns = id_OHE.columns.tolist()
         nn_features += id_columns
 
+    # Standardize numerical columns
     scaler = StandardScaler()
     df[numerical_columns] = scaler.fit_transform(df[numerical_columns])
 
@@ -76,6 +79,7 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
     data = {}
     data["df"] = pd.concat([df, labels_OHE, id_OHE], axis=1)
 
+    # Split dataset by subjects (some subjects are used for training and some for testing)
     if train_subjects != None and test_subjects != None:
         unique_subject_ids = df["ID"].unique()
         if train_subjects + test_subjects > len(unique_subject_ids):
@@ -122,6 +126,13 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
     data["y_test"] = np.array(data["test_df"]["label"])
     data["y_train_NN"] = np.array(data["train_df"][label_columns])
     data["y_test_NN"] = np.array(data["test_df"][label_columns])
+    ds_features = data["nn_features"] + ["label"]
+    data["train_ds"] = tfdf.keras.pd_dataframe_to_tf_dataset(
+        data["train_df"][ds_features], label="label"
+    )
+    data["test_ds"] = tfdf.keras.pd_dataframe_to_tf_dataset(
+        data["test_df"][ds_features], label="label"
+    )
 
     print("Training Features Shape:", data["X_train"].shape)
     print("Testing Features Shape:", data["X_test"].shape)
@@ -132,6 +143,7 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
     print("Training Labels OHE Shape:", data["y_train_NN"].shape)
     print("Testing Labels OHE Shape:", data["y_test_NN"].shape)
 
+    # Print the class distribution (%) of the train and test datasets
     column_sums_train = data["train_df"][label_columns].sum()
     total_sum_train = column_sums_train.sum()
     column_sum_train_percentages = round((column_sums_train / total_sum_train) * 100, 2)
@@ -151,16 +163,16 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
 def evaluateClassifier(
     cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
     data: dict,
-) -> None:  # , classes) -> None:
+) -> None:
+    """Evaluates a model and prints important classification metrics."""
+
     print(f"\nEvaluating {type(cl)} classifier...")
     print(f"Features: {data['nn_features']}")
     if type(cl) == RandomForestClassifier or type(cl) == GaussianNB:
         y_pred_proba = cl.predict_proba(data["X_test"])
     else:
         if type(cl) == tfdf.keras.RandomForestModel:
-            test_df = data["test_df"][data["nn_features"] + ["label"]]
-            test_ds = tfdf.keras.pd_dataframe_to_tf_dataset(test_df, label="label")
-            y_pred_proba = cl.predict(test_ds)
+            y_pred_proba = cl.predict(data["test_ds"])
         else:
             y_pred_proba = cl.predict(data["X_test_NN"])
     y_pred = np.argmax(y_pred_proba, axis=1)
@@ -178,54 +190,32 @@ def evaluateClassifier(
     print("Classification Report:\n", class_rep)
 
 
-def trainNNmodel(
-    data, epochs=50, batch_size=10, min_delta=0.001, patience=5
-) -> tuple[Sequential, list]:
+def getSequentialModel(data, min_delta, patience) -> tuple[Sequential, list]:
+    """Returns a compiled sequential model and its training callbacks."""
+
     model = Sequential()
-    model.add(
-        tf.keras.layers.Dense(
-            64, input_shape=(data["X_train_NN"].shape[1],), activation="relu"
-        )
-    )
-    model.add(tf.keras.layers.Dense(32, activation="relu"))
-    model.add(tf.keras.layers.Dense(data["y_train_NN"].shape[1], activation="sigmoid"))
+    model.add(Input(shape=(data["X_train_NN"].shape[1],)))
+    model.add(Dense(128, activation="relu"))
+    model.add(Dropout(0.1))
+    model.add(Dense(64, activation="relu"))
+    model.add(Dropout(0.1))
+    model.add(Dense(data["y_train_NN"].shape[1], activation="softmax"))
     model.summary()
+    model.compile(
+        optimizer="Adam", loss="categorical_crossentropy", metrics=["accuracy"]
+    )
 
-    model.compile(optimizer="Adam", loss="binary_crossentropy", metrics=["accuracy"])
-
-    # Stop the training when there is no improvement in the validation accuracy for 5 consecutive epochs.
-    early_stopping_cb = tf.keras.callbacks.EarlyStopping(
+    # Stop the training when there is no improvement in the validation accuracy for some (patience) consecutive epochs.
+    early_stopping_cb = EarlyStopping(
         monitor="val_accuracy",
         mode="max",
         min_delta=min_delta,
         patience=patience,
         restore_best_weights=True,
     )
+    callbacks = [early_stopping_cb]
 
-    # now we just update our model fit call
-    history = model.fit(
-        data["X_train_NN"],
-        data["y_train_NN"],
-        callbacks=[early_stopping_cb],
-        epochs=epochs,
-        batch_size=batch_size,
-        validation_split=0.2,
-        shuffle=True,
-        verbose=1,
-    )
-    return (model, history)
-
-
-def trainRFClassifier_tf(data: dict) -> tuple[tfdf.keras.RandomForestModel, list]:
-    tf_ds_cols = data["nn_features"] + ["label"]
-    train_df = data["train_df"][tf_ds_cols]
-    train_ds = tfdf.keras.pd_dataframe_to_tf_dataset(train_df, label="label")
-
-    model = tfdf.keras.RandomForestModel()
-    model.compile(optimizer="Adam", loss="binary_crossentropy", metrics=["accuracy"])
-    history = model.fit(train_ds)
-
-    return (model, history)
+    return (model, callbacks)
 
 
 def getModelPath(
@@ -235,6 +225,8 @@ def getModelPath(
     test_subjects=None,
     models_path="models",
 ):
+    """Generates path to save the trained model based on its type and other variables."""
+
     if cl_type.__name__ == "RandomForestClassifier":
         extension = "joblib"
         model_class = "sklearn_RF"
@@ -266,7 +258,7 @@ def saveModel(
     test_subjects=None,
     models_path="models",
 ) -> None:
-    """Generates path to save the trained model and saves it."""
+    """Saves a model to storage."""
 
     cl_type = type(cl)
     path = getModelPath(
@@ -294,6 +286,8 @@ def loadClassifiers(
     train_subjects=None,
     test_subjects=None,
 ) -> list:
+    """Loads all available saved classifiers from storage."""
+
     classifiers = []
     for cl_type in cl_types:
         print(f"Looking for classifier of type: {cl_type.__name__}...")
@@ -305,7 +299,6 @@ def loadClassifiers(
             if cl_type.__name__ == "RandomForestClassifier":
                 classifiers.append(joblib.load(path))
             else:
-                print(cl_type.__name__)
                 classifiers.append(load_model(path))
         else:
             print(f"Didn't find classifier in path: {path}.")
