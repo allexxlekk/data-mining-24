@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.colors as mcolors
 import numpy as np
 from scipy.interpolate import make_interp_spline
+import seaborn as sns
 
 ACTIVITIES_NAME_DICT = {
     1: "Walking",
@@ -61,6 +62,7 @@ PARTICIPANT_DATA_DICT = {
     22: "harth/S029.csv",
 }
 
+sensors = ["back_x", "back_y", "back_z", "thigh_x", "thigh_y", "thigh_z"]
 
 def calculate_activity_durations(participant):
     data = pd.read_csv(PARTICIPANT_DATA_DICT.get(participant))
@@ -104,12 +106,10 @@ def calculate_activity_durations(participant):
 
 
 def plot_activity_durations(durations):
-    # Convert seconds to minutes
-    durations_minutes = durations / 60
 
     # Plot
     fig, ax = plt.subplots()
-    durations_minutes.plot(kind="bar", ax=ax, color="skyblue")
+    durations.plot(kind="bar", ax=ax, color="skyblue")
     ax.set_title("Total Time Spent on Each Activity (in minutes)")
     ax.set_ylabel("Duration (minutes)")
     ax.set_xlabel("Activity")
@@ -118,15 +118,24 @@ def plot_activity_durations(durations):
     plt.show()
 
 
-def plot_activity(activity, participant, blockPlot = True):
+def plot_activity(activity, participant, blockPlot=True):
     data = pd.read_csv(PARTICIPANT_DATA_DICT.get(participant))
     data["timestamp"] = pd.to_datetime(data["timestamp"])
     data["activity_code"] = data["label"].map(ACTIVITIES_VALUE_DICT)
     activity_data = data[data["label"] == activity]
 
-    fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(12, 10))
+    # Downsampling: Sample at 1 second intervals (50 data points)
+    sampled_data = activity_data.iloc[::50]
+
+    # Ensure we have 30 seconds of data (30 points after downsampling)
+    sampled_data = sampled_data.head(30)
+
+    # Creating a larger figure to accommodate the correlation heatmap
+    fig, axes = plt.subplots(
+        nrows=4, ncols=2, figsize=(12, 14)
+    )  # Adjusted the number of rows to 4
     fig.suptitle(
-        f"Sensor Readings for Activity {ACTIVITIES_NAME_DICT.get(activity)}",
+        f"Sensor Readings and Correlation Matrix for Activity {ACTIVITIES_NAME_DICT.get(activity)}. Participant: {participant}",
         fontsize=16,
     )
 
@@ -139,7 +148,9 @@ def plot_activity(activity, participant, blockPlot = True):
         "Thigh Y-axis",
         "Thigh Z-axis",
     ]
-    for i, ax in enumerate(axes.flat):
+
+    # Plot sensor data in the first six subplots
+    for i, ax in enumerate(axes.flat[:6]):
         ax.plot(
             activity_data["timestamp"],
             activity_data[sensors[i]],
@@ -147,13 +158,42 @@ def plot_activity(activity, participant, blockPlot = True):
             marker="o",
             linestyle="-",
         )
+        sensor_data = activity_data[sensors[i]]
+        mean_value = sensor_data.mean()
         ax.set_title(titles[i])
         ax.set_xlabel("Time")
         ax.set_ylabel("Acceleration")
+        # Annotate the mean value on the plot
+        ax.axhline(
+            y=mean_value, color="r", linestyle="--", label=f"Mean: {mean_value:.2f}"
+        )
         ax.legend()
-        plt.setp(ax.get_xticklabels(), rotation=45)
-        ax.grid(True)  # Adding grid for better readability
 
+        plt.setp(ax.get_xticklabels(), rotation=45)
+        ax.grid(True)
+
+    # Calculate the correlation matrix and plot it in the last subplot
+    correlation_matrix = activity_data[sensors].corr()
+    ax_correlation = axes.flat[6]
+    sns.heatmap(correlation_matrix, annot=True, cmap="coolwarm", ax=ax_correlation)
+    ax_correlation.set_title("Sensor Data Correlation Matrix")
+
+    ax_all_sensors = axes.flat[7]
+    for sensor in sensors:
+        ax_all_sensors.plot(
+            sampled_data["timestamp"],
+            sampled_data[sensor],
+            label=f"{sensor}",
+            marker="o",
+            linestyle="-",
+        )
+    ax_all_sensors.set_title("All Sensors Over Time")
+    ax_all_sensors.legend()
+    ax_all_sensors.set_xlabel("Time")
+    ax_all_sensors.set_ylabel("Acceleration")
+    ax_all_sensors.grid(True)
+
+    # Adjust layout to prevent overlap and ensure all subplot titles and labels are visible
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.show(block=blockPlot)
 
@@ -197,8 +237,22 @@ def gather_all_durations(participants):
     durations = {}
     for participant in participants:
         activity_durations = calculate_activity_durations(participant)
-        durations[participant] = activity_durations
+        durations[participant] = (
+            activity_durations / 60
+        )  # Convert each duration from seconds to minutes
+
     return durations
+
+
+def plot_activity_duration_heatmap(durations):
+    duration_df = pd.DataFrame(durations).fillna(0)
+
+    plt.figure(figsize=(10, 6))
+    sns.heatmap(duration_df, annot=True, cmap="YlGnBu", fmt=".1f")
+    plt.title("Activity Duration Heatmap Across Participants (minutes)")
+    plt.ylabel("Activity")
+    plt.xlabel("Participant ID")
+    plt.show()
 
 
 def plot_activity_histogram(activity_name, durations_dict, blockPlot=True):
@@ -208,8 +262,8 @@ def plot_activity_histogram(activity_name, durations_dict, blockPlot=True):
 
     for participant, activities in durations_dict.items():
         # Convert seconds to minutes and append the duration
-        duration = (
-            activities.get(activity_name, 0) / 60
+        duration = activities.get(
+            activity_name, 0
         )  # Default to 0 if the activity is not found
         activity_durations.append(duration)
         participant_ids.append(participant)
@@ -259,6 +313,7 @@ def plot_activity_histogram(activity_name, durations_dict, blockPlot=True):
     plt.legend()
     plt.show(block=blockPlot)
 
+
 def find_top_participant_per_activity(durations_dict):
     top_participant_per_activity = {}
 
@@ -277,26 +332,75 @@ def find_top_participant_per_activity(durations_dict):
 
     return top_participant_per_activity
 
+
+def calculate_mean_for_activity(activity, participant):
+    # Load the data
+    data = pd.read_csv(PARTICIPANT_DATA_DICT.get(participant))
+    data["timestamp"] = pd.to_datetime(data["timestamp"])
+    activity_data = data[data["label"] == activity]
+
+    # Define the sensor titles (assuming these are the column names in your data)
+    sensors = ["back_x", "back_y", "back_z", "thigh_x", "thigh_y", "thigh_z"]
+
+    # Dictionary to store mean values of each sensor
+    sensor_mean_values = {}
+
+    # Calculate the mean for each sensor
+    for sensor in sensors:
+        sensor_mean_values[sensor] = activity_data[sensor].mean()
+
+    return sensor_mean_values
+
+def analyze_activities(activities, participants):
+    # Dictionary to store DataFrame rows
+    all_means = []
+
+    # Loop through each participant and activity to calculate means
+    for participant in participants:
+        for activity in activities:
+            mean_values = calculate_mean_for_activity(activity, participant)
+            mean_values['Activity'] = activity  # Add activity label for identification
+            mean_values['Participant'] = participant  # Add participant ID
+            all_means.append(mean_values)
+    
+    # Create a DataFrame from the collected mean values
+    df_means = pd.DataFrame(all_means)
+    df_pivot = df_means.pivot_table(index=['Activity'], columns=['Participant'], values=sensors)
+    
+    # Calculate the correlation matrix
+    correlation_matrix = df_pivot.corr()
+
+    # Create the heatmap
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt=".2f")
+    plt.title('Correlation Matrix of Activity Sensor Means')
+    plt.show()
+
 if __name__ == "__main__":
     participants = [i for i in range(1, 5)]
-
     # All participants
     participants = [participant for participant in PARTICIPANT_DATA_DICT.keys()]
+
     # plot_activity_changes(participants)
+
     durations = gather_all_durations(participants)
-    
     # activity_names = list(ACTIVITIES_NAME_DICT.values())
     # for activity_name in activity_names[:-1]:
     #     plot_activity_histogram(activity_name, durations, False)
     # plot_activity_histogram(activity_names[-1], durations)
+    # plot_activity_duration_heatmap(durations)
 
-    # Get the participant with the most time per activity    
+    # Get the participant with the most time per activity
     top_participant_per_activity = find_top_participant_per_activity(durations)
-    
-    # Plot the activity sensor data for the top participant
-    
+
+    # Plot the activity sensor data for the top participant of each activity.
+
     activity_participant_list = list(top_participant_per_activity.items())
-    for key,value in activity_participant_list[:-1]:
+
+    for key, value in activity_participant_list[:-2]:
         plot_activity(INVERSE_ACTIVITIES_NAME_DICT[key], value, False)
-        
-    plot_activity(activity_participant_list[-1][0], activity_participant_list[-1][1])
+    plot_activity(
+        INVERSE_ACTIVITIES_NAME_DICT[activity_participant_list[-1][0]],
+        activity_participant_list[-1][1],
+        True,
+    )
