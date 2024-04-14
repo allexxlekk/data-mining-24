@@ -17,6 +17,12 @@ from sklearn.naive_bayes import GaussianNB
 from keras.layers import Dense, Dropout
 from keras import Input
 from keras.callbacks import EarlyStopping
+from keras.losses import (
+    CategoricalFocalCrossentropy,
+    CategoricalHinge,
+    CategoricalCrossentropy,
+)
+from data_visualization import displayConfusionMatrix, plotLabelDistributionHistogram
 
 LABEL_LIST = {
     "walking",
@@ -142,20 +148,7 @@ def preprocessData(df: pd.DataFrame, train_subjects=None, test_subjects=None) ->
     print("Testing Labels Shape:", data["y_test"].shape)
     print("Training Labels OHE Shape:", data["y_train_NN"].shape)
     print("Testing Labels OHE Shape:", data["y_test_NN"].shape)
-
-    # Print the class distribution (%) of the train and test datasets
-    column_sums_train = data["train_df"][label_columns].sum()
-    total_sum_train = column_sums_train.sum()
-    column_sum_train_percentages = round((column_sums_train / total_sum_train) * 100, 2)
-
-    column_sums_test = data["test_df"][label_columns].sum()
-    total_sum_test = column_sums_test.sum()
-    column_sum_test_percentages = round((column_sums_test / total_sum_test) * 100, 2)
-
-    print("Train df label distribution:")
-    print(column_sum_train_percentages)
-    print("Test df label distribution:")
-    print(column_sum_test_percentages)
+    plotLabelDistributionHistogram(data, label_columns, LABEL_LIST)
 
     return data
 
@@ -180,14 +173,14 @@ def evaluateClassifier(
     # Calculate evaluation metrics
     accuracy = accuracy_score(data["y_test"], y_pred)
     auc = roc_auc_score(data["y_test_NN"], y_pred_proba, multi_class="ovr")
-    conf_matrix = confusion_matrix(data["y_test"], y_pred)
+    # conf_matrix = confusion_matrix(data["y_test"], y_pred)
     class_rep = classification_report(
         data["y_test"], y_pred, target_names=LABEL_LIST, zero_division=0
     )
     print(f"Accuracy: {accuracy:.2f}")
     print(f"AUC: {auc:.2f}")
-    print("Confusion Matrix:\n", conf_matrix)
     print("Classification Report:\n", class_rep)
+    displayConfusionMatrix(data["y_test"], y_pred, None, LABEL_LIST)
 
 
 def getSequentialModel(data, min_delta, patience) -> tuple[Sequential, list]:
@@ -202,7 +195,7 @@ def getSequentialModel(data, min_delta, patience) -> tuple[Sequential, list]:
     model.add(Dense(data["y_train_NN"].shape[1], activation="softmax"))
     model.summary()
     model.compile(
-        optimizer="Adam", loss="categorical_crossentropy", metrics=["accuracy"]
+        optimizer="Adam", loss=CategoricalFocalCrossentropy(), metrics=["accuracy"]
     )
 
     # Stop the training when there is no improvement in the validation accuracy for some (patience) consecutive epochs.

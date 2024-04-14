@@ -3,6 +3,7 @@ import classifiers as cl
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 import tensorflow_decision_forests as tfdf
+import data_visualization as dv
 
 # Dataset parameters
 MAX_SUBJECTS = 22
@@ -13,8 +14,8 @@ TEST_SUBJECTS = None
 N_TREES = 100
 
 ## Neural network parameters
-EPOCHS = 20
-BATCH_SIZE = 10
+EPOCHS = 100
+BATCH_SIZE = 64
 # Early stopping (metric=val_accuracy)
 MIN_DELTA = 0.001
 PATIENCE = 5
@@ -34,10 +35,10 @@ def main():
         [cl.evaluateClassifier(classifier, data) for classifier in classifiers]
     else:
         #### Train classifiers
-        ## Neural Network (tf Sequential model)
+        # Neural Network (tf Sequential model)
         print("Training Neural Network classifier...")
         (nn_model, callbacks) = cl.getSequentialModel(data, MIN_DELTA, PATIENCE)
-        history = nn_model.fit(
+        nn_history = nn_model.fit(
             data["X_train_NN"],
             data["y_train_NN"],
             callbacks=callbacks,
@@ -47,6 +48,7 @@ def main():
             shuffle=True,
             verbose=1,
         )
+        dv.plotHistory(nn_history)
         cl.evaluateClassifier(nn_model, data)
         cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
@@ -55,7 +57,7 @@ def main():
         rf_model_tf = tfdf.keras.RandomForestModel()
         rf_model_tf.compile(loss="categorical_crossentropy", metrics=["accuracy"])
         # Train the model
-        rf_history = rf_model_tf.fit(data["train_ds"])
+        rf_history = rf_model_tf.fit(data["train_ds"], verbose=1)
         cl.evaluateClassifier(rf_model_tf, data)
         cl.saveModel(rf_model_tf, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
