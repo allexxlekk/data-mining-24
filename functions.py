@@ -1,8 +1,6 @@
 import pandas as pd
 import os
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import csv
 import numpy as np
 
@@ -102,11 +100,3 @@ def readDataset(folder_path="harth/", max_subjects=23) -> pd.DataFrame:
     comb_df["label"] = comb_df["label"].replace(label_mapping)
 
     return comb_df
-
-
-def showDfMetrics(df: pd.DataFrame) -> None:
-    """Lek's job to make this function meaningful."""
-
-    print(df.head())
-    df.info()
-    df.describe()
