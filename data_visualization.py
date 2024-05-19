@@ -405,7 +405,6 @@ def plotHistogram(series: pd.Series, ax):
 
 def plotLabelDistributionHistogram(y_train, y_test, label_list) -> None:
     # Print the class distribution (%) of the train and test datasets
-
     column_sums_train = pd.DataFrame(np.sum(y_train, axis=0), index=label_list)
     # column_sums_train.index = label_list
 
@@ -468,7 +467,8 @@ def plotSensorValues(df: pd.DataFrame, id):
 
     # Create legend handles
     legend_handles = [
-        mpatches.Patch(color=label_color_map[label], label=label) for label in labels
+        mpatches.Patch(color=label_color_map[label], label=ACTIVITIES_NAME_DICT[label])
+        for label in labels
     ]
 
     # Set common labels and title

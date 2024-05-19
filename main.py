@@ -15,7 +15,7 @@ TEST_SUBJECTS = None
 N_TREES = 100
 
 ## Neural network parameters
-EPOCHS = 1
+EPOCHS = 20
 BATCH_SIZE = 256
 
 

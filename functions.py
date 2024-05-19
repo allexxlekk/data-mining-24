@@ -91,13 +91,8 @@ def readAndPreprocessData(
     for idx, csv_file in enumerate(csv_files):
         if idx >= max_subjects:
             break
-        if idx == 11 or idx == 16:
-            continue
         file_path = os.path.join(folder_path, csv_file)
-        # Drop the first readings, as they are used for synchronization
-        df = pd.read_csv(
-            file_path, quoting=csv.QUOTE_NONE
-        )  # , skiprows=range(1, 1051))
+        df = pd.read_csv(file_path, quoting=csv.QUOTE_NONE)
         # Add subject IDs
         df["ID"] = idx
 
@@ -121,7 +116,7 @@ def readAndPreprocessData(
     #     comb_df[column] = comb_df[column].astype(float)
 
     # print("Mapping label numbers to strings...")
-    comb_df["label"] = comb_df["label"].replace(label_mapping)
+    # comb_df["label"] = comb_df["label"].replace(label_mapping)
     # print("Finished mapping")
 
     if train_subjects is not None and test_subjects is not None:
@@ -144,6 +139,7 @@ def readAndPreprocessData(
 
     # One-hot encode the label and ID columns
     labels_OHE = pd.get_dummies(comb_df["label"], dtype=float)  # , prefix="label")
+    labels_OHE.columns = labels_OHE.columns.map(label_mapping)
     id_OHE = pd.get_dummies(comb_df["ID"], dtype=float, prefix="id")
     label_columns = labels_OHE.columns.tolist()
 
