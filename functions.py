@@ -19,7 +19,7 @@ FEATURES = [
 ]
 
 # Redefine labels to be contiguous integers starting from 0
-label_mapping = {
+label_mapping_old = {
     1: 0,
     2: 1,
     3: 2,
@@ -32,6 +32,21 @@ label_mapping = {
     14: 9,
     130: 10,
     140: 11,
+}
+
+label_mapping = {
+    1: "Walking",
+    2: "Running",
+    3: "Shuffling",
+    4: "Stairs (ascending)",
+    5: "Stairs (descending)",
+    6: "Standing",
+    7: "Sitting",
+    8: "Lying",
+    13: "Cycling (sit)",
+    14: "Cycling (stand)",
+    130: "Cycling (sit, inactive)",
+    140: "Cycling (stand, inactive)",
 }
 
 
@@ -105,7 +120,9 @@ def readAndPreprocessData(
     #         continue
     #     comb_df[column] = comb_df[column].astype(float)
 
+    # print("Mapping label numbers to strings...")
     comb_df["label"] = comb_df["label"].replace(label_mapping)
+    # print("Finished mapping")
 
     if train_subjects is not None and test_subjects is not None:
         subject_split = True
@@ -126,7 +143,7 @@ def readAndPreprocessData(
     ### Data Preprocessing
 
     # One-hot encode the label and ID columns
-    labels_OHE = pd.get_dummies(comb_df["label"], dtype=float, prefix="label")
+    labels_OHE = pd.get_dummies(comb_df["label"], dtype=float)  # , prefix="label")
     id_OHE = pd.get_dummies(comb_df["ID"], dtype=float, prefix="id")
     label_columns = labels_OHE.columns.tolist()
 
@@ -149,7 +166,7 @@ def readAndPreprocessData(
 
     # Plot sensor values for each subject
     # for id in data["df"]["ID"].unique():
-    #     plotSensorValues(data["df"][data["df"]["ID"] == id], id)
+    #     plotSensorValues(data["df"][data["df"]["ID"] == id].iloc[:2_000], id)
 
     # Split dataset by subjects (some subjects are used for training and some for testing)
     if subject_split:

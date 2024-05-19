@@ -168,7 +168,7 @@ def loadClassifiers(
     return classifiers
 
 
-def trainNNClassifier(nn_model: Sequential, data: dict):
+def trainNNClassifier(nn_model: Sequential, data: dict, epochs, batch_size):
     # Stop the training when there is no improvement for some (patience) consecutive epochs.
     early_stopping_cb = EarlyStopping(
         monitor="val_loss",
@@ -182,8 +182,8 @@ def trainNNClassifier(nn_model: Sequential, data: dict):
         data["X_train_RNN"],
         data["y_train_RNN"],
         callbacks=callbacks,
-        epochs=EPOCHS,
-        batch_size=BATCH_SIZE,
+        epochs=epochs,
+        batch_size=batch_size,
         validation_split=0.2,
         shuffle=True,
         verbose=1,

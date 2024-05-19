@@ -46,7 +46,7 @@ def main():
         nn_model = cl.getSequentialModel(
             (data["X_train_RNN"].shape[1:]), data["y_train_RNN"].shape[1]
         )
-        nn_history = cl.trainNNClassifier(data, EPOCHS, BATCH_SIZE)
+        nn_history = cl.trainNNClassifier(nn_model, data, EPOCHS, BATCH_SIZE)
         dv.plotHistory(nn_history)
         cl.evaluateClassifier(nn_model, data)
         # cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
