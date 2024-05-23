@@ -10,7 +10,7 @@ import data_visualization as dv
 import numpy as np
 
 ## Dataset parameters
-MAX_SUBJECTS = 8
+MAX_SUBJECTS = 22
 TRAIN_SUBJECTS = None
 TEST_SUBJECTS = None
 
@@ -18,7 +18,7 @@ TEST_SUBJECTS = None
 N_TREES = 100
 
 ## Neural network parameters
-EPOCHS = 2
+EPOCHS = 50
 BATCH_SIZE = 10_000
 
 
@@ -45,20 +45,6 @@ def main():
         ]
     else:
         #### Train classifiers
-        # Neural Network (tf Sequential model)
-        print("Training Neural Network classifier...")
-        # Determine the number of unique classes
-        num_classes = np.max(y_train) + 1
-        # Convert labels to OHE labels
-        y_train = np.eye(num_classes)[y_train]
-        nn_model = cl.getSequentialModel((X_train.shape[1:]), num_classes)
-        nn_history = cl.trainNNClassifier(
-            nn_model, X_train, y_train, EPOCHS, BATCH_SIZE
-        )
-        dv.plotHistory(nn_history)
-        cl.evaluateClassifier(nn_model, X_test, np.eye(num_classes)[y_test])
-        # cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
-
         # Random Forest (sklearn)
         print("Training Random Forest classifier...")
         # Flatten the input data
@@ -75,6 +61,19 @@ def main():
         ).fit(X_train, y_train)
         cl.evaluateClassifier(rf_classifier, X_test, y_test)
         # cl.saveModel(rf_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
+
+        # Neural Network (tf Sequential model)
+        print("Training Neural Network classifier...")
+        # Convert labels to OHE labels
+        num_classes = np.max(y_train) + 1
+        y_train = np.eye(num_classes)[y_train]
+        nn_model = cl.getSequentialModel((X_train.shape[1:]), num_classes)
+        nn_history = cl.trainNNClassifier(
+            nn_model, X_train, y_train, EPOCHS, BATCH_SIZE
+        )
+        dv.plotHistory(nn_history)
+        cl.evaluateClassifier(nn_model, X_test, np.eye(num_classes)[y_test])
+        # cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
         ## Gaussian Naive Bayes
         # print("Training Gaussian Naive Bayes classifier...")
