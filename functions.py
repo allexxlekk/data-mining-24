@@ -2,9 +2,8 @@ import pandas as pd
 import os
 import numpy as np
 import csv
-import numpy as np
 from sklearn.preprocessing import StandardScaler
-from tensorflow_decision_forests.keras import pd_dataframe_to_tf_dataset
+from sklearn.model_selection import train_test_split
 from data_visualization import plotSensorValues
 
 FEATURES = [
@@ -18,8 +17,37 @@ FEATURES = [
     "thigh_z",
 ]
 
-# Redefine labels to be contiguous integers starting from 0
-label_mapping_old = {
+# LABEL_MAPPING = {
+#     1: "Walking",
+#     2: "Running",
+#     3: "Shuffling",
+#     4: "Stairs (ascending)",
+#     5: "Stairs (descending)",
+#     6: "Standing",
+#     7: "Sitting",
+#     8: "Lying",
+#     13: "Cycling (sit)",
+#     14: "Cycling (stand)",
+#     130: "Cycling (sit, inactive)",
+#     140: "Cycling (stand, inactive)",
+# }
+
+LABEL_LIST = [
+    "Walking",
+    "Running",
+    "Shuffling",
+    "Stairs (ascending)",
+    "Stairs (descending)",
+    "Standing",
+    "Sitting",
+    "Lying",
+    "Cycling (sit)",
+    "Cycling (stand)",
+    "Cycling (sit, inactive)",
+    "Cycling (stand, inactive)",
+]
+
+LABEL_MAPPING = {
     1: 0,
     2: 1,
     3: 2,
@@ -32,21 +60,6 @@ label_mapping_old = {
     14: 9,
     130: 10,
     140: 11,
-}
-
-label_mapping = {
-    1: "Walking",
-    2: "Running",
-    3: "Shuffling",
-    4: "Stairs (ascending)",
-    5: "Stairs (descending)",
-    6: "Standing",
-    7: "Sitting",
-    8: "Lying",
-    13: "Cycling (sit)",
-    14: "Cycling (stand)",
-    130: "Cycling (sit, inactive)",
-    140: "Cycling (stand, inactive)",
 }
 
 
@@ -103,26 +116,26 @@ def readAndPreprocessData(
             if col in df.columns:
                 df.drop(col, axis=1, inplace=True)
 
+        if idx == 20:
+            # Filter out odd timestamps for subject 20 to be consistent with 20ms sampling of the other subjects
+            df = df[df["time_step"] % 2 == 0]
+
         data.append(df.values)
 
     # Combine data from all CSV files into a single array
     combined_data = np.concatenate(data)
-    comb_df = pd.DataFrame(combined_data, columns=df.columns)
+    df = pd.DataFrame(combined_data, columns=df.columns)
 
     # Convert columns to specified data types
-    # for column in comb_df.columns.to_list():
-    #     if column == "timestamp":
-    #         continue
-    #     comb_df[column] = comb_df[column].astype(float)
-
-    # print("Mapping label numbers to strings...")
-    # comb_df["label"] = comb_df["label"].replace(label_mapping)
-    # print("Finished mapping")
+    df["label"] = df["label"].map(LABEL_MAPPING)
+    df[FEATURES] = df[FEATURES].astype(float)
+    int_cols = ["label", "ID", "time_step"]
+    df[int_cols] = df[int_cols].astype(int)
 
     if train_subjects is not None and test_subjects is not None:
         subject_split = True
         total_subjects = train_subjects + test_subjects
-        unique_subject_ids = comb_df["ID"].unique()
+        unique_subject_ids = df["ID"].unique()
         if total_subjects > len(unique_subject_ids):
             print(
                 f"Train and test subjects exceed total subjects {len(unique_subject_ids)}!"
@@ -136,97 +149,52 @@ def readAndPreprocessData(
         subject_split = False
 
     ### Data Preprocessing
-
-    # One-hot encode the label and ID columns
-    labels_OHE = pd.get_dummies(comb_df["label"], dtype=float)  # , prefix="label")
-    labels_OHE.columns = labels_OHE.columns.map(label_mapping)
-    id_OHE = pd.get_dummies(comb_df["ID"], dtype=float, prefix="id")
-    label_columns = labels_OHE.columns.tolist()
-
-    # Standardize numerical features
-    numerical_columns = FEATURES.copy()
-    nn_features = FEATURES.copy()
-    if "ID" in FEATURES:
-        numerical_columns.remove("ID")
-        nn_features.remove("ID")
-        id_columns = id_OHE.columns.tolist()
-        nn_features += id_columns
-
-    # Standardize numerical columns
-    scaler = StandardScaler()
-    comb_df[numerical_columns] = scaler.fit_transform(comb_df[numerical_columns])
-
     # Concatenate one-hot encoded columns with the original dataframe
     data = {}
-    data["df"] = pd.concat([comb_df, labels_OHE, id_OHE], axis=1)
 
     # Plot sensor values for each subject
-    # for id in data["df"]["ID"].unique():
-    #     plotSensorValues(data["df"][data["df"]["ID"] == id].iloc[:2_000], id)
+    # for id in new_df["ID"].unique():
+    #     plotSensorValues(new_df[new_df["ID"] == id].iloc[:2_000], id)
 
     # Split dataset by subjects (some subjects are used for training and some for testing)
     if subject_split:
         # Seperate the data into train and test subjects based on user's choice
-        first_ids_df = data["df"][
-            data["df"]["ID"].isin(unique_subject_ids[:train_subjects])
-        ]
-        next_ids_df = data["df"][
-            data["df"]["ID"].isin(
+        train_df = df[df["ID"].isin(unique_subject_ids[:train_subjects])]
+        test_df = df[
+            df["ID"].isin(
                 unique_subject_ids[train_subjects : train_subjects + test_subjects]
             )
         ]
-        # Shuffle dataframe rows
-        data["train_df"] = first_ids_df.sample(frac=1, random_state=7).reset_index(
-            drop=True
+        X_train, y_train = segment_time_series(
+            np.array(train_df[FEATURES]),
+            np.array(train_df["label"]),
+            window_size,
         )
-        data["test_df"] = next_ids_df.sample(frac=1, random_state=7).reset_index(
-            drop=True
+        X_test, y_test = segment_time_series(
+            np.array(test_df[FEATURES]),
+            np.array(test_df["label"]),
+            window_size,
         )
+        # X_train, y_train = segment_time_series_v2(train_df)
+        # X_test, y_test = segment_time_series_v2(test_df)
     else:
-        # Shuffle dataframe rows
-        # data["df"] = data["df"].sample(frac=1).reset_index(drop=True)
-        # Calculate the index to split the dataframe
-        split_index = int(0.7 * len(data["df"]))
-        # Split the dataframe into train and test sets
-        data["train_df"] = data["df"].iloc[:split_index]
-        data["test_df"] = data["df"].iloc[split_index:]
+        # X, y = segment_time_series_v2(new_df)
+        X, y = segment_time_series(
+            np.array(df[FEATURES]), np.array(df["label"]), window_size
+        )
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=7
+        )
 
-    data["nn_features"] = nn_features
-    data["X_train"] = np.array(data["train_df"][FEATURES])
-    data["X_test"] = np.array(data["test_df"][FEATURES])
-    data["y_train"] = np.array(data["train_df"]["label"])
-    data["y_test"] = np.array(data["test_df"]["label"])
-    ds_features = nn_features + ["label"]
-    data["train_ds"] = pd_dataframe_to_tf_dataset(
-        data["train_df"][ds_features], label="label"
-    )
-    data["test_ds"] = pd_dataframe_to_tf_dataset(
-        data["test_df"][ds_features], label="label"
-    )
-    data["X_train_RNN"], data["y_train_RNN"] = segment_time_series(
-        np.array(data["train_df"][nn_features]),
-        np.array(data["train_df"][label_columns]),
-        window_size,
-    )
-    data["X_test_RNN"], data["y_test_RNN"] = segment_time_series(
-        np.array(data["test_df"][nn_features]),
-        np.array(data["test_df"][label_columns]),
-        window_size,
-    )
+    print("Training Features Shape:", X_train.shape)
+    print("Testing Features Shape:", X_test.shape)
+    print("Training Labels Shape:", y_train.shape)
+    print("Testing Labels Shape:", y_test.shape)
 
-    print("Training Features Shape:", data["X_train"].shape)
-    print("Testing Features Shape:", data["X_test"].shape)
-    print("Training Labels Shape:", data["y_train"].shape)
-    print("Testing Labels Shape:", data["y_test"].shape)
-    print("Training RNN Features Shape:", data["X_train_RNN"].shape)
-    print("Testing RNN Features Shape:", data["X_test_RNN"].shape)
-    print("Training RNN Labels Shape:", data["y_train_RNN"].shape)
-    print("Testing RNN Labels Shape:", data["y_test_RNN"].shape)
-
-    return data
+    return X_train, X_test, y_train, y_test
 
 
-def segment_time_series(data, labels_OHE, window_size, shuffle=True):
+def segment_time_series(data, labels, window_size, shuffle=True):
     """
     Segment time series data into fully overlapping fixed-length sequences.
 
@@ -241,14 +209,14 @@ def segment_time_series(data, labels_OHE, window_size, shuffle=True):
         Segmented labels will be a 2D array of shape (num_segments, num_classes).
     """
     num_samples, num_features = data.shape
-    num_classes = labels_OHE.shape[1]
+    # num_classes = labels.shape[1]
 
     # Calculate the number of segments
     num_segments = num_samples - window_size + 1
 
     # Initialize arrays to store segmented data and labels
     segmented_data = np.zeros((num_segments, window_size, num_features))
-    segmented_labels = np.zeros((num_segments, num_classes))
+    segmented_labels = np.zeros((num_segments), dtype=int)
 
     # Segment the data
     for i in range(num_segments):
@@ -257,13 +225,17 @@ def segment_time_series(data, labels_OHE, window_size, shuffle=True):
         segmented_data[i] = data[start_idx:end_idx, :]
 
         # Compute the majority label in the window
-        window_labels = labels_OHE[start_idx:end_idx, :]
-        majority_label_idx = np.argmax(np.sum(window_labels, axis=0))
+        window_labels = labels[start_idx:end_idx]
+        # Use numpy.unique to find unique elements and their counts
+        unique_values, counts = np.unique(window_labels, return_counts=True)
+
+        # Find the index of the maximum count
+        majority_label_idx = unique_values[np.argmax(counts)]
 
         # Create a one-hot encoded vector for the majority label
-        majority_label = np.zeros(num_classes)
-        majority_label[majority_label_idx] = 1
-        segmented_labels[i] = majority_label
+        # majority_label = np.zeros(num_classes)
+        # majority_label[majority_label_idx] = 1
+        segmented_labels[i] = majority_label_idx
 
     if shuffle:
         # After segmenting, shuffle the segmented data and labels together

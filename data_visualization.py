@@ -6,8 +6,22 @@ from scipy.interpolate import make_interp_spline
 import seaborn as sns
 from matplotlib.ticker import PercentFormatter
 from sklearn.metrics import confusion_matrix
-import matplotlib.patches as mpatches
-import matplotlib.colors as mcolors
+
+
+LABEL_LIST = [
+    "Walking",
+    "Running",
+    "Shuffling",
+    "Stairs (ascending)",
+    "Stairs (descending)",
+    "Standing",
+    "Sitting",
+    "Lying",
+    "Cycling (sit)",
+    "Cycling (stand)",
+    "Cycling (sit, inactive)",
+    "Cycling (stand, inactive)",
+]
 
 
 ACTIVITIES_NAME_DICT = {
@@ -374,24 +388,22 @@ def displayConfusionMatrix(
     plt.show()
 
 
-def plotHistogram(series: pd.Series, ax):
+def plotHistogram(array, ax):
     # Calculate total sum of counts
-    total_count = series.sum().iloc[0]
+    total_count = np.sum(array)
 
     # Plotting the bar plot
-    bars = series.plot(
-        kind="bar", color="skyblue", ax=ax
-    )  # Use ax parameter to specify the subplot
-    ax.get_legend().remove()  # Hide legend
+    bars = ax.bar(range(len(array)), array, color="skyblue")
+
     ax.set_xlabel("Activity")  # Set x-axis label for the subplot
     ax.set_ylabel("Count")  # Set y-axis label for the subplot
+    ax.set_xticks(range(len(LABEL_LIST)))
     ax.set_xticklabels(
-        series.index, rotation=45, ha="right"
+        LABEL_LIST, rotation=45, ha="right"
     )  # Set x-axis labels and rotate for readability
 
     # Annotate each bar with its percentage value
-    for bar in bars.patches:
-        count = bar.get_height()
+    for bar, count in zip(bars, array):
         percentage = (count / total_count) * 100
         ax.annotate(
             f"{percentage:.2f}%",
@@ -403,21 +415,20 @@ def plotHistogram(series: pd.Series, ax):
         )
 
 
-def plotLabelDistributionHistogram(y_train, y_test, label_list) -> None:
-    # Print the class distribution (%) of the train and test datasets
-    column_sums_train = pd.DataFrame(np.sum(y_train, axis=0), index=label_list)
-    # column_sums_train.index = label_list
+def plotLabelDistributionHistogram(y_train: np.array, y_test) -> None:
+    """Print the class distribution (%) of the train and test datasets"""
 
-    column_sums_test = pd.DataFrame(np.sum(y_test, axis=0), index=label_list)
-    # column_sums_test.index = label_list
+    # Get unique label occurences
+    _, y_train_counts = np.unique(y_train, return_counts=True)
+    _, y_test_counts = np.unique(y_test, return_counts=True)
 
     # Set up the figure and subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
 
-    plotHistogram(column_sums_train, ax1)
+    plotHistogram(y_train_counts, ax1)
     ax1.set_title("Train set label distribution")
 
-    plotHistogram(column_sums_test, ax2)
+    plotHistogram(y_test_counts, ax2)
     ax2.set_title("Test set label distribution")
 
     plt.tight_layout()
@@ -425,6 +436,7 @@ def plotLabelDistributionHistogram(y_train, y_test, label_list) -> None:
 
 
 def plotSensorValues(df: pd.DataFrame, id):
+
     # Define sensor names and components
     sensors = ["back", "thigh"]  # List of sensor names
     components = ["x", "y", "z"]  # List of sensor components
@@ -434,50 +446,17 @@ def plotSensorValues(df: pd.DataFrame, id):
         len(sensors), len(components), figsize=(15, 10), sharex=True
     )
 
-    # Define a color map for the labels
-    labels = df["label"].unique()
-    colors = plt.cm.get_cmap("viridis", len(labels))
-    label_color_map = {label: colors(i) for i, label in enumerate(labels)}
-
     # Plotting each sensor value in a separate subplot
     for i, sensor in enumerate(sensors):
         for j, component in enumerate(components):
             column_name = f"{sensor}_{component}"
-            ax = axs[i, j]
-            ax.plot(df["timestamp"], df[column_name])
-            ax.set_title(f"{sensor}_{component}")  # Set subplot title
-
-            # Set background color according to the label
-            for k in range(len(df) - 1):
-                start_time = df["timestamp"].iloc[k]
-                end_time = df["timestamp"].iloc[k + 1]
-                ax.axvspan(
-                    start_time,
-                    end_time,
-                    facecolor=label_color_map[df["label"].iloc[k]],
-                    alpha=0.3,
-                )
-            # Ensure last interval is covered if necessary
-            ax.axvspan(
-                df["timestamp"].iloc[-1],
-                df["timestamp"].iloc[-1] + pd.Timedelta(seconds=1),
-                facecolor=label_color_map[df["label"].iloc[-1]],
-                alpha=0.3,
-            )
-
-    # Create legend handles
-    legend_handles = [
-        mpatches.Patch(color=label_color_map[label], label=ACTIVITIES_NAME_DICT[label])
-        for label in labels
-    ]
+            axs[i, j].plot(df["time_step"], df[column_name])
+            axs[i, j].set_title(f"{sensor}_{component}")  # Set subplot title
 
     # Set common labels and title
     fig.suptitle(f"Sensor values for subject {id} over time", fontsize=16)
     fig.text(0.5, 0.04, "Time", ha="center", va="center")
     fig.text(0.06, 0.5, "Sensor Values", ha="center", va="center", rotation="vertical")
-
-    # Add legend to the plot
-    fig.legend(handles=legend_handles, loc="upper right", title="Labels")
 
     # Adjust layout and display plot
     plt.tight_layout()

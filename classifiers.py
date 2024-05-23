@@ -14,6 +14,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, Dropout, LSTM, Input
 from keras.callbacks import EarlyStopping
 from keras.losses import CategoricalFocalCrossentropy
+from keras.optimizers import Adam
 
 LABEL_LIST = [
     "walking",
@@ -32,23 +33,26 @@ LABEL_LIST = [
 
 
 def evaluateClassifier(
-    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
-    data: dict,
+    cl: RandomForestClassifier | Sequential | GaussianNB,
+    X_test,
+    y_test,
 ) -> None:
     """Evaluates a model and prints important classification metrics."""
 
     print(f"\nEvaluating {type(cl)} classifier...")
-    print(f"Features: {data['nn_features']}")
 
-    y_true = data["y_test"]
+    y_true = y_test
     if type(cl) == RandomForestClassifier or type(cl) == GaussianNB:
-        y_pred_proba = cl.predict_proba(data["X_test"])
+        y_pred_proba = cl.predict_proba(X_test)
     else:
         if type(cl) == tfdf.keras.RandomForestModel:
-            y_pred_proba = cl.predict(data["test_ds"])
+            # Create test_ds from y_true?
+            # test_ds =
+            # y_pred_proba = cl.predict(test_ds)
+            y_pred_proba = cl.predict(X_test)
         else:
-            y_pred_proba = cl.predict(data["X_test_RNN"])
-            y_true = np.argmax(data["y_test_RNN"], axis=1)
+            y_pred_proba = cl.predict(X_test)
+            y_true = np.argmax(y_test, axis=1)
 
     y_pred = np.argmax(y_pred_proba, axis=1)
 
@@ -70,14 +74,39 @@ def getSequentialModel(input_shape, output_shape) -> Sequential:
     model = Sequential()
     model.add(Input(shape=(input_shape)))
     model.add(LSTM(20, dropout=0.1))
-    model.add(Dropout(0.1))
+    model.add(Dropout(0.2))
     model.add(Dense(output_shape, activation="softmax"))
     model.summary()
     model.compile(
-        optimizer="Adam", loss=CategoricalFocalCrossentropy(), metrics=["accuracy"]
+        optimizer=Adam(learning_rate=0.001),
+        loss=CategoricalFocalCrossentropy(),
+        metrics=["accuracy"],
     )
 
     return model
+
+
+def trainNNClassifier(nn_model: Sequential, X_train, y_train, epochs, batch_size):
+    # Stop the training when there is no improvement for some (patience) consecutive epochs.
+    early_stopping_cb = EarlyStopping(
+        monitor="val_loss",
+        mode="min",
+        min_delta=0.001,
+        patience=10,
+        restore_best_weights=True,
+    )
+    callbacks = [early_stopping_cb]
+    nn_history = nn_model.fit(
+        X_train,
+        y_train,
+        callbacks=callbacks,
+        epochs=epochs,
+        batch_size=batch_size,
+        validation_split=0.3,
+        shuffle=True,
+        verbose=1,
+    )
+    return nn_history
 
 
 def getModelPath(
@@ -166,26 +195,3 @@ def loadClassifiers(
             print(f"Didn't find classifier in path: {path}.")
 
     return classifiers
-
-
-def trainNNClassifier(nn_model: Sequential, data: dict, epochs, batch_size):
-    # Stop the training when there is no improvement for some (patience) consecutive epochs.
-    early_stopping_cb = EarlyStopping(
-        monitor="val_loss",
-        mode="min",
-        min_delta=0.001,
-        patience=5,
-        restore_best_weights=True,
-    )
-    callbacks = [early_stopping_cb]
-    nn_history = nn_model.fit(
-        data["X_train_RNN"],
-        data["y_train_RNN"],
-        callbacks=callbacks,
-        epochs=epochs,
-        batch_size=batch_size,
-        validation_split=0.2,
-        shuffle=True,
-        verbose=1,
-    )
-    return nn_history
