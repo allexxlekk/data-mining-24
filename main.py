@@ -45,13 +45,26 @@ def main():
         ]
     else:
         #### Train classifiers
+
+        # Neural Network (tf Sequential model)
+        print("Training Neural Network classifier...")
+        # Convert labels to OHE labels
+        num_classes = np.max(y_train) + 1
+        nn_model = cl.getSequentialModel((X_train.shape[1:]), num_classes)
+        nn_history = cl.trainNNClassifier(
+            nn_model, X_train, np.eye(num_classes)[y_train], EPOCHS, BATCH_SIZE
+        )
+        dv.plotHistory(nn_history)
+        cl.evaluateClassifier(nn_model, X_test, np.eye(num_classes)[y_test])
+        # cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
+
         # Random Forest (sklearn)
         print("Training Random Forest classifier...")
         # Flatten the input data
         num_samples, num_timesteps, num_sensors = X_train.shape
+        test_samples = X_test.shape[0]
         X_train = X_train.reshape(num_samples, num_timesteps * num_sensors)
-        num_samples, num_timesteps, num_sensors = X_test.shape
-        X_test = X_test.reshape(num_samples, num_timesteps * num_sensors)
+        X_test = X_test.reshape(test_samples, num_timesteps * num_sensors)
         rf_classifier = RandomForestClassifier(
             n_estimators=N_TREES,
             random_state=7,
@@ -59,26 +72,17 @@ def main():
             verbose=3,
             class_weight="balanced",
         ).fit(X_train, y_train)
-        cl.evaluateClassifier(rf_classifier, X_test, y_test)
+        cl.evaluateClassifier(
+            rf_classifier,
+            X_test,
+            y_test,
+        )
         # cl.saveModel(rf_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
-        # Neural Network (tf Sequential model)
-        print("Training Neural Network classifier...")
-        # Convert labels to OHE labels
-        num_classes = np.max(y_train) + 1
-        y_train = np.eye(num_classes)[y_train]
-        nn_model = cl.getSequentialModel((X_train.shape[1:]), num_classes)
-        nn_history = cl.trainNNClassifier(
-            nn_model, X_train, y_train, EPOCHS, BATCH_SIZE
-        )
-        dv.plotHistory(nn_history)
-        cl.evaluateClassifier(nn_model, X_test, np.eye(num_classes)[y_test])
-        # cl.saveModel(nn_model, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
-
-        ## Gaussian Naive Bayes
-        # print("Training Gaussian Naive Bayes classifier...")
-        # gnb_classifier = GaussianNB().fit(X_train, y_train_OHE)
-        # cl.evaluateClassifier(gnb_classifier, data)
+        # Gaussian Naive Bayes
+        print("Training Gaussian Naive Bayes classifier...")
+        gnb_classifier = GaussianNB().fit(X_train, y_train)
+        cl.evaluateClassifier(gnb_classifier, X_test, y_test)
         # cl.saveModel(gnb_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
 
 
