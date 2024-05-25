@@ -2,13 +2,11 @@ import pandas as pd
 import os
 import numpy as np
 import csv
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from data_visualization import plotSensorValues
+from sklearn.utils import shuffle
+from data_visualization import plot_sensor_values
 
 FEATURES = [
-    # "ID",
-    # "time_step",
     "back_x",
     "back_y",
     "back_z",
@@ -16,21 +14,6 @@ FEATURES = [
     "thigh_y",
     "thigh_z",
 ]
-
-# LABEL_MAPPING = {
-#     1: "Walking",
-#     2: "Running",
-#     3: "Shuffling",
-#     4: "Stairs (ascending)",
-#     5: "Stairs (descending)",
-#     6: "Standing",
-#     7: "Sitting",
-#     8: "Lying",
-#     13: "Cycling (sit)",
-#     14: "Cycling (stand)",
-#     130: "Cycling (sit, inactive)",
-#     140: "Cycling (stand, inactive)",
-# }
 
 LABEL_LIST = [
     "Walking",
@@ -63,7 +46,7 @@ LABEL_MAPPING = {
 }
 
 
-def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
+def add_timesteps(df: pd.DataFrame) -> pd.DataFrame:
     """Adds time_step column, indicating the amount of 0.01 second steps that have passed since the sensors started recording"""
 
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
@@ -83,14 +66,14 @@ def convertTimestampToTimeStep(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def readAndPreprocessData(
+def read_and_preprocess_data(
     folder_path="harth/",
     max_subjects=23,
     train_subjects=None,
     test_subjects=None,
     window_size=50,
-) -> dict:
-    """Reads original csv files and loads them into a dataframe."""
+) -> list:
+    """Reads original csv files and loads them into a dataframe. Appropriate pre-processing is applied to the dataset and finally returns the inputs and labels of classifiers."""
 
     if max_subjects < 1:
         print(f"Invalid max_subjects: {max_subjects}")
@@ -109,7 +92,7 @@ def readAndPreprocessData(
         # Add subject IDs
         df["ID"] = idx
 
-        df = convertTimestampToTimeStep(df)
+        df = add_timesteps(df)
         # Drop unneeded columns
         columns_to_drop = ["index", "Unnamed: 0"]
         for col in columns_to_drop:
@@ -148,14 +131,11 @@ def readAndPreprocessData(
     else:
         subject_split = False
 
-    ### Data Preprocessing
-    # Concatenate one-hot encoded columns with the original dataframe
-    data = {}
-
     # Plot sensor values for each subject
-    # for id in new_df["ID"].unique():
-    #     plotSensorValues(new_df[new_df["ID"] == id].iloc[:2_000], id)
+    # for id in df["ID"].unique()[:2]:
+    #     plot_sensor_values(df, id, plot_start=0, plot_end=2_000)
 
+    data = {}
     # Split dataset by subjects (some subjects are used for training and some for testing)
     if subject_split:
         # Seperate the data into train and test subjects based on user's choice
@@ -175,15 +155,12 @@ def readAndPreprocessData(
             np.array(test_df["label"]),
             window_size,
         )
-        # X_train, y_train = segment_time_series_v2(train_df)
-        # X_test, y_test = segment_time_series_v2(test_df)
     else:
-        # X, y = segment_time_series_v2(new_df)
         X, y = segment_time_series(
             np.array(df[FEATURES]), np.array(df["label"]), window_size
         )
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.3, random_state=7
+            X, y, test_size=0.3, random_state=7, shuffle=False
         )
 
     print("Training Features Shape:", X_train.shape)
@@ -194,35 +171,22 @@ def readAndPreprocessData(
     return X_train, X_test, y_train, y_test
 
 
-def segment_time_series(data, labels, window_size, shuffle=True):
-    """
-    Segment time series data into fully overlapping fixed-length sequences.
-
-    Args:
-        data (np.ndarray): 2D array of shape (num_samples, num_features) representing the accelerometer data for one time step.
-        labels (np.ndarray): 2D array of shape (num_samples, num_classes) containing the one-hot encoded labels.
-        window_size (int): Number of time steps to include in each segment.
-
-    Returns:
-        Tuple of segmented data and corresponding labels.
-        Segmented data will be a 3D array of shape (num_segments, window_size, num_features).
-        Segmented labels will be a 2D array of shape (num_segments, num_classes).
-    """
-    num_samples, num_features = data.shape
-    # num_classes = labels.shape[1]
+def segment_time_series(data, labels, window_size):
+    """Segment time series data into fully overlapping fixed-length sequences."""
 
     # Calculate the number of segments
+    num_samples, num_features = data.shape
     num_segments = num_samples - window_size + 1
 
     # Initialize arrays to store segmented data and labels
-    segmented_data = np.zeros((num_segments, window_size, num_features))
-    segmented_labels = np.zeros((num_segments), dtype=int)
+    X_semented = np.zeros((num_segments, window_size, num_features))
+    y_segmented = np.zeros((num_segments), dtype=int)
 
     # Segment the data
     for i in range(num_segments):
         start_idx = i
         end_idx = i + window_size
-        segmented_data[i] = data[start_idx:end_idx, :]
+        X_semented[i] = data[start_idx:end_idx, :]
 
         # Compute the majority label in the window
         window_labels = labels[start_idx:end_idx]
@@ -232,18 +196,17 @@ def segment_time_series(data, labels, window_size, shuffle=True):
         # Find the index of the maximum count
         majority_label_idx = unique_values[np.argmax(counts)]
 
-        # Create a one-hot encoded vector for the majority label
-        # majority_label = np.zeros(num_classes)
-        # majority_label[majority_label_idx] = 1
-        segmented_labels[i] = majority_label_idx
+        # Append the majority label to the segmented_labels list
+        y_segmented[i] = majority_label_idx
 
-    if shuffle:
-        # After segmenting, shuffle the segmented data and labels together
-        # Create an array of indices to shuffle
-        shuffle_indices = np.random.permutation(num_segments)
+    # Return the shuffled data and labels
+    return shuffle(X_semented, y_segmented, random_state=7)
 
-        # Shuffle segmented_data and segmented_labels based on shuffle_indices
-        segmented_data = segmented_data[shuffle_indices]
-        segmented_labels = segmented_labels[shuffle_indices]
 
-    return segmented_data, segmented_labels
+def get_label_distribution(y: np.array):
+    """Calculates and returns the label distribution of the provided array."""
+
+    # Get unique label occurences
+    _, y_counts = np.unique(y, return_counts=True)
+    total_count = np.sum(y_counts)
+    return [100 * count / total_count for count in y_counts]

@@ -1,0 +1,8 @@
+- Better window pre-processing (configurable time i.e. 1-second long windows, drop samples with missing data?)
+- Implement undersampling technique
+- Make window overlap adjustable
+- Implement Train - Test - Validation split with similar label distributions (or leave-one-out validation)
+- NN Fine-Tuning
+- Save model
+- Is RF Classifier overtraining?
+- Feature extraction for RF and GNB?

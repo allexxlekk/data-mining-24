@@ -1,4 +1,4 @@
-from data_visualization import displayConfusionMatrix
+from data_visualization import display_confusion_matrix
 import numpy as np
 import joblib
 from os.path import exists
@@ -34,25 +34,19 @@ LABEL_LIST = [
 
 def evaluateClassifier(
     cl: RandomForestClassifier | Sequential | GaussianNB,
-    X_test,
-    y_test,
+    X_test: np.array,
+    y_test: np.array,
 ) -> None:
     """Evaluates a model and prints important classification metrics."""
 
     print(f"\nEvaluating {type(cl)} classifier...")
 
-    y_true = y_test
     if type(cl) == RandomForestClassifier or type(cl) == GaussianNB:
         y_pred_proba = cl.predict_proba(X_test)
-    else:
-        if type(cl) == tfdf.keras.RandomForestModel:
-            # Create test_ds from y_true?
-            # test_ds =
-            # y_pred_proba = cl.predict(test_ds)
-            y_pred_proba = cl.predict(X_test)
-        else:
-            y_pred_proba = cl.predict(X_test)
-            y_true = np.argmax(y_test, axis=1)
+        y_true = y_test
+    elif type(cl) == Sequential:
+        y_pred_proba = cl.predict(X_test)
+        y_true = np.argmax(y_test, axis=1)
 
     y_pred = np.argmax(y_pred_proba, axis=1)
 
@@ -65,37 +59,41 @@ def evaluateClassifier(
     print(f"Accuracy: {accuracy:.2f}")
     print(f"AUC: {auc:.2f}")
     print("Classification Report:\n", class_rep)
-    displayConfusionMatrix(y_true, y_pred, None, LABEL_LIST)
+    display_confusion_matrix(y_true, y_pred, None, LABEL_LIST)
 
 
-def getSequentialModel(input_shape, output_shape) -> Sequential:
-    """Returns a compiled sequential model and its training callbacks."""
+def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
+    """Returns a compiled sequential model for classification."""
 
     model = Sequential()
     model.add(Input(shape=(input_shape)))
-    model.add(LSTM(20, dropout=0.1))
-    model.add(Dropout(0.2))
+    model.add(LSTM(20))
+    model.add(Dropout(0.1))
     model.add(Dense(output_shape, activation="softmax"))
     model.summary()
     model.compile(
         optimizer=Adam(learning_rate=0.001),
-        loss=CategoricalFocalCrossentropy(),
+        loss=CategoricalFocalCrossentropy(alpha=alpha, gamma=2),
         metrics=["accuracy"],
     )
 
     return model
 
 
-def trainNNClassifier(nn_model: Sequential, X_train, y_train, epochs, batch_size):
+def train_nn_classifier(nn_model: Sequential, X_train, y_train, epochs, batch_size):
+    """Trains a sequential neural network classifier. Returns training history."""
+
     # Stop the training when there is no improvement for some (patience) consecutive epochs.
     early_stopping_cb = EarlyStopping(
         monitor="val_loss",
         mode="min",
-        min_delta=0.001,
-        patience=10,
+        min_delta=0.0001,
+        patience=20,
         restore_best_weights=True,
     )
     callbacks = [early_stopping_cb]
+
+    # Train the neural network on input data
     nn_history = nn_model.fit(
         X_train,
         y_train,
@@ -109,7 +107,7 @@ def trainNNClassifier(nn_model: Sequential, X_train, y_train, epochs, batch_size
     return nn_history
 
 
-def getModelPath(
+def get_model_path(
     cl_type,
     max_subjects=23,
     train_subjects=None,
@@ -142,7 +140,7 @@ def getModelPath(
     return path
 
 
-def saveModel(
+def save_model(
     cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
     max_subjects,
     train_subjects=None,
@@ -152,7 +150,7 @@ def saveModel(
     """Saves a model to storage."""
 
     cl_type = type(cl)
-    path = getModelPath(
+    path = get_model_path(
         cl_type, max_subjects, train_subjects, test_subjects, models_path
     )
 
@@ -165,7 +163,7 @@ def saveModel(
         print(f"File {path} already exists!")
 
 
-def loadClassifiers(
+def load_classifiers(
     cl_types: list = [
         tfdf.keras.RandomForestModel,
         RandomForestClassifier,
@@ -182,7 +180,7 @@ def loadClassifiers(
     classifiers = []
     for cl_type in cl_types:
         print(f"Looking for classifier of type: {cl_type.__name__}...")
-        path = getModelPath(
+        path = get_model_path(
             cl_type, max_subjects, train_subjects, test_subjects, models_path
         )
         if exists(path):
@@ -195,3 +193,20 @@ def loadClassifiers(
             print(f"Didn't find classifier in path: {path}.")
 
     return classifiers
+
+
+def calculate_alpha(label_distribution: list[float]) -> list[float]:
+    """Calculate the alpha parameter for each label based on the label distribution."""
+
+    # Convert percentages to proportions (sum should be 1)
+    total = sum(label_distribution)
+    proportions = [x / total for x in label_distribution]
+
+    # Calculate the inverse of the proportions
+    inverse_proportions = [1 / p if p > 0 else 0 for p in proportions]
+
+    # Normalize the inverses to sum to 1
+    sum_inverse_proportions = sum(inverse_proportions)
+    alpha = [x / sum_inverse_proportions for x in inverse_proportions]
+
+    return alpha
