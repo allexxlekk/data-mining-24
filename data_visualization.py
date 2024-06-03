@@ -391,12 +391,12 @@ def display_confusion_matrix(
     plt.show()
 
 
-def plot_histogram(percentages, ax):
+def plot_histogram(percentages, ax, set_name):
     # Plotting the bar plot
     bars = ax.bar(range(len(percentages)), percentages, color="skyblue")
-
+    ax.set_title(f"{set_name} set label distribution")
     ax.set_xlabel("Activity")  # Set x-axis label for the subplot
-    ax.set_ylabel("Count")  # Set y-axis label for the subplot
+    ax.set_ylabel("Percentage")  # Set y-axis label for the subplot
     ax.set_xticks(range(len(LABEL_LIST)))
     ax.set_xticklabels(
         LABEL_LIST, rotation=45, ha="right"
@@ -414,20 +414,19 @@ def plot_histogram(percentages, ax):
         )
 
 
-def plot_distribution_histograms(distribution_1, distribution_2) -> None:
+def plot_distribution_histograms(distributions: list) -> None:
     """Print the class distribution (%) of the train and test datasets"""
 
     # Set up the figure and subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 12))
+    fig, axes = plt.subplots(len(distributions), 1, figsize=(10, 12))
+    set_names = ["Train", "Test", "Val"]
 
-    plot_histogram(distribution_1, ax1)
-    ax1.set_title("Train set label distribution")
-
-    plot_histogram(distribution_2, ax2)
-    ax2.set_title("Test set label distribution")
+    for dist, ax, name in zip(distributions, axes, set_names):
+        plot_histogram(dist, ax, name)
 
     plt.tight_layout()
-    plt.show()
+    plt.draw()
+    # plt.show()
 
 
 def plot_sensor_values(df: pd.DataFrame, id, plot_start=0, plot_end=2000):

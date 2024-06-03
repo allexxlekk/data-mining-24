@@ -8,9 +8,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 import data_visualization as dv
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 ## Dataset parameters
-MAX_SUBJECTS = 22
+SUBJECTS = 22
 TRAIN_SUBJECTS = None
 TEST_SUBJECTS = None
 
@@ -23,17 +24,8 @@ BATCH_SIZE = 5_000
 
 
 def main():
-    X_train, X_test, y_train, y_test = fn.read_and_preprocess_data(
-        max_subjects=MAX_SUBJECTS,
-        train_subjects=TRAIN_SUBJECTS,
-        test_subjects=TEST_SUBJECTS,
-        window_size=20,
-    )
-
-    y_train_distr = fn.get_label_distribution(y_train)
-    y_test_distr = fn.get_label_distribution(y_test)
-    alpha = cl.calculate_alpha(y_train_distr)
-    dv.plot_distribution_histograms(y_train_distr, y_test_distr)
+    # X, y = fn.read_and_preprocess_data(subjects=SUBJECTS)
+    X, y = fn.load_preprocessed_data()
 
     usr_in = "n"
     while usr_in != "y" and usr_in != "n":
@@ -51,8 +43,15 @@ def main():
 
         # Neural Network (tf Sequential model)
         print("Training Neural Network classifier...")
-        # Convert labels to OHE labels
+        # cl.custom_loo_cv(X, y, epochs=1, batch_size=1_000)
+        X = np.concatenate([X[i] for i in range(len(X))], axis=0)
+        y = np.concatenate([y[i] for i in range(len(y))], axis=0)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.3, random_state=7, shuffle=True
+        )
         num_classes = np.max(y_train) + 1
+        y_train_distr = cl.get_label_distribution(y_train)
+        alpha = cl.calculate_alpha(y_train_distr)
         nn_model = cl.get_sequential_model((X_train.shape[1:]), num_classes, alpha)
         nn_history = cl.train_nn_classifier(
             nn_model,
