@@ -1,7 +1,5 @@
 from data_visualization import display_confusion_matrix
 import numpy as np
-import joblib
-from os.path import exists
 import tensorflow_decision_forests as tfdf
 from sklearn.metrics import (
     accuracy_score,
@@ -11,9 +9,8 @@ from sklearn.metrics import (
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.utils import shuffle
-from keras.models import Sequential, load_model
+from keras.models import Sequential
 from keras.layers import Dense, Dropout, LSTM, Input
-from keras.callbacks import EarlyStopping
 from keras.losses import CategoricalFocalCrossentropy
 from keras.optimizers import Adam
 from functions import get_label_distribution
@@ -94,22 +91,11 @@ def train_nn_classifier(
     nn_model: Sequential, X_train, y_train, epochs, batch_size, validation_data=None
 ):
     """Trains a sequential neural network classifier. Returns training history."""
-
-    # Stop the training when there is no improvement for some (patience) consecutive epochs.
-    # early_stopping_cb = EarlyStopping(
-    #     monitor="val_loss",
-    #     mode="min",
-    #     min_delta=0.0001,
-    #     patience=10,
-    #     restore_best_weights=True,
-    # )
-    # callbacks = [early_stopping_cb]
-
+    
     # Train the neural network on input data
     nn_history = nn_model.fit(
         X_train,
         y_train,
-        # callbacks=callbacks,
         epochs=epochs,
         batch_size=batch_size,
         validation_split=0.3,
@@ -118,94 +104,6 @@ def train_nn_classifier(
         validation_data=validation_data,
     )
     return nn_history
-
-
-def get_model_path(
-    cl_type,
-    max_subjects=23,
-    train_subjects=None,
-    test_subjects=None,
-    models_path="models",
-):
-    """Generates path to save the trained model based on its type and other variables."""
-
-    if cl_type.__name__ == "RandomForestClassifier":
-        extension = "joblib"
-        model_class = "sklearn_RF"
-    elif cl_type.__name__ == "GaussianNB":
-        extension = "joblib"
-        model_class = "sklearn_GNB"
-    else:
-        extension = "keras"
-        if cl_type.__name__ == "Sequential":
-            model_class = "keras_NN"
-        else:
-            model_class = "keras_RF"
-
-    split_str = (
-        f"{train_subjects}_{test_subjects}"
-        if train_subjects is not None and test_subjects is not None
-        else "no"
-    )
-
-    path = f"{models_path}/{model_class}_classifier_{max_subjects}_max_subjects_{split_str}_split.{extension}"
-
-    return path
-
-
-def save_model(
-    cl: tfdf.keras.RandomForestModel | RandomForestClassifier | Sequential | GaussianNB,
-    max_subjects,
-    train_subjects=None,
-    test_subjects=None,
-    models_path="models",
-) -> None:
-    """Saves a model to storage."""
-
-    cl_type = type(cl)
-    path = get_model_path(
-        cl_type, max_subjects, train_subjects, test_subjects, models_path
-    )
-
-    if not exists(path):
-        if cl_type == RandomForestClassifier or cl_type == GaussianNB:
-            joblib.dump(cl, path)
-        else:
-            cl.save(path)
-    else:
-        print(f"File {path} already exists!")
-
-
-def load_classifiers(
-    cl_types: list = [
-        tfdf.keras.RandomForestModel,
-        RandomForestClassifier,
-        Sequential,
-        GaussianNB,
-    ],
-    models_path="models",
-    max_subjects=23,
-    train_subjects=None,
-    test_subjects=None,
-) -> list:
-    """Loads all available saved classifiers from storage."""
-
-    classifiers = []
-    for cl_type in cl_types:
-        print(f"Looking for classifier of type: {cl_type.__name__}...")
-        path = get_model_path(
-            cl_type, max_subjects, train_subjects, test_subjects, models_path
-        )
-        if exists(path):
-            print(f"Found classifier {path}. Adding it to the classifiers list.")
-            if cl_type.__name__ == "RandomForestClassifier":
-                classifiers.append(joblib.load(path))
-            else:
-                classifiers.append(load_model(path))
-        else:
-            print(f"Didn't find classifier in path: {path}.")
-
-    return classifiers
 
 
 def calculate_alpha(label_distribution: list[float]) -> list[float]:

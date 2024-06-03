@@ -4,7 +4,6 @@ import numpy as np
 import csv
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from data_visualization import plot_sensor_values
 from time import time
 import pickle
 
@@ -17,21 +16,6 @@ FEATURES = [
     "thigh_x",
     "thigh_y",
     "thigh_z",
-]
-
-LABEL_LIST = [
-    "Walking",
-    "Running",
-    "Shuffling",
-    "Stairs (ascending)",
-    "Stairs (descending)",
-    "Standing",
-    "Sitting",
-    "Lying",
-    "Cycling (sit)",
-    "Cycling (stand)",
-    "Cycling (sit, inactive)",
-    "Cycling (stand, inactive)",
 ]
 
 LABEL_MAPPING = {
@@ -108,43 +92,7 @@ def read_and_preprocess_data(
         with open(PP_DATA_FP + f"subject_{idx}.pkl", "wb") as f:
             pickle.dump((X_temp, y_temp), f)
 
-    # Plot sensor values for each subject
-    # for id in df["ID"].unique()[:2]:
-    #     plot_sensor_values(df, id, plot_start=0, plot_end=2_000)
-
     return X, y
-
-
-def segment_time_series_old(data, labels, window_size):
-    """Segment time series data into fully overlapping fixed-length sequences."""
-
-    # Calculate the number of segments
-    num_samples, num_features = data.shape
-    num_segments = num_samples - window_size + 1
-
-    # Initialize arrays to store segmented data and labels
-    X_semented = np.zeros((num_segments, window_size, num_features))
-    y_segmented = np.zeros((num_segments), dtype=int)
-
-    # Segment the data
-    for i in range(num_segments):
-        start_idx = i
-        end_idx = i + window_size
-        X_semented[i] = data[start_idx:end_idx, :]
-
-        # Compute the majority label in the window
-        window_labels = labels[start_idx:end_idx]
-        # Use numpy.unique to find unique elements and their counts
-        unique_values, counts = np.unique(window_labels, return_counts=True)
-
-        # Find the index of the maximum count
-        majority_label_idx = unique_values[np.argmax(counts)]
-
-        # Append the majority label to the segmented_labels list
-        y_segmented[i] = majority_label_idx
-
-    # Return the shuffled data and labels
-    return shuffle(X_semented, y_segmented, random_state=7)
 
 
 def segment_time_series(df, window_length_ms, overlap):
@@ -218,47 +166,3 @@ def load_preprocessed_data() -> list[np.array]:
         y.append(y_temp)
 
     return X, y
-
-
-def flatten_selected_slices(ar: np.array, start, end):
-    """Selects a slice from the given multi-dimensional array along the first axis, and flattens it into a lower-dimensional array."""
-    if ar.ndim < 2:
-        raise ValueError("The input array must have at least 2 dimensions.")
-
-    # Select the slice
-    selected_slice = ar[start:end]
-
-    # Calculate the new shape for flattening
-    new_shape = (-1,) + ar.shape[2:]
-
-    # Return the flattened slice
-    return selected_slice.reshape(new_shape)
-
-
-def split_data(
-    X: np.array, y: np.array, train_s=None, test_s=None, val_s=None
-) -> list[np.array]:
-
-    # Seperate the data into train test and validation subjects
-    if train_s is not None and test_s is not None and val_s is not None:
-        total_subjects = train_s + test_s + val_s
-        X_subjects = X.shape[0]
-        if total_subjects > X_subjects:
-            print(f"Train and test subjects exceed total subjects {X_subjects}!")
-            train_s = int(X_subjects * 0.6)
-            test_s = int(X_subjects * 0.3)
-            val_s = int(X_subjects * 0.1)
-            if val_s == 0:
-                val_s = 1
-            total_subjects = train_s + test_s + val_s
-
-            while total_subjects < X_subjects:
-                train_s += 1
-            print(f"Setting train subjects to {train_s} and subjects to {test_s}")
-
-    # print("Training Features Shape:", X_train.shape)
-    # print("Testing Features Shape:", X_test.shape)
-    # print("Training Labels Shape:", y_train.shape)
-    # print("Testing Labels Shape:", y_test.shape)
-
-    return X_train, X_test, y_train, y_test
