@@ -43,7 +43,7 @@ def main():
 
         # Neural Network (tf Sequential model)
         print("Training Neural Network classifier...")
-        # cl.custom_loo_cv(X, y, epochs=1, batch_size=1_000)
+        # cl.custom_loo_cv(X, y, epochs=20, batch_size=1_000)
         X = np.concatenate([X[i] for i in range(len(X))], axis=0)
         y = np.concatenate([y[i] for i in range(len(y))], axis=0)
         X_train, X_test, y_train, y_test = train_test_split(

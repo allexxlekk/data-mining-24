@@ -61,10 +61,11 @@ def print_important_classification_metrics(y_true, y_pred, y_pred_proba=None):
         auc = roc_auc_score(y_true, y_pred_proba, multi_class="ovr")
         print(f"AUC: {auc:.2f}")
     accuracy = accuracy_score(y_true, y_pred)
-    print(y_true.shape)
-    print(y_pred.shape)
     class_rep = classification_report(
-        y_true, y_pred, target_names=LABEL_LIST[: np.amax(y_pred) + 1], zero_division=0
+        y_true,
+        y_pred,
+        target_names=[LABEL_LIST[idx] for idx in list(np.unique(y_pred))],
+        zero_division=0,
     )
     print(f"Accuracy: {accuracy:.2f}")
     print("Classification Report:\n", class_rep)

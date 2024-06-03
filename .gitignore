@@ -54,3 +54,4 @@ test*
 *:Zone.Identifier
 models/
 output/df.csv
+preprocessed_timeseries/
