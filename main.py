@@ -4,11 +4,13 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 import functions as fn
 import classifiers as cl
+import data_visualization as dv
+import clustering
+import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
-import data_visualization as dv
-import numpy as np
 from sklearn.model_selection import train_test_split
+from sklearn.cluster import AgglomerativeClustering, KMeans
 
 ## Dataset parameters
 SUBJECTS = 22
@@ -90,6 +92,22 @@ def main():
         gnb_classifier = GaussianNB().fit(X_train, y_train)
         cl.evaluateClassifier(gnb_classifier, X_test, y_test)
         # cl.saveModel(gnb_classifier, MAX_SUBJECTS, TRAIN_SUBJECTS, TEST_SUBJECTS)
+
+        #### Clustering
+        # Create feature matrix
+        feature_matrix = clustering.create_feature_matrix(y)
+
+        # Apply K-means clustering
+        kmeans = KMeans(n_clusters=5, random_state=7)
+        km_labels = kmeans.fit_predict(feature_matrix)
+        clustering.plot_clusters(feature_matrix, km_labels)
+
+
+        # Apply hierarchical clustering
+        agg_clustering = AgglomerativeClustering(n_clusters=3)
+        agg_labels = agg_clustering.fit_predict(feature_matrix)
+        clustering.plot_dendogram(feature_matrix, agg_labels)
+        clustering.plot_clusters(feature_matrix, agg_labels)
 
 
 if __name__ == "__main__":
