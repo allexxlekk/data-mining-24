@@ -52,7 +52,9 @@ def evaluateClassifier(
     print_important_classification_metrics(y_true, y_pred, y_pred_proba)
 
 
-def print_important_classification_metrics(y_true, y_pred, y_pred_proba=None, filename=None):
+def print_important_classification_metrics(
+    y_true, y_pred, y_pred_proba=None, filename=""
+):
     # Calculate evaluation metrics
     if y_pred_proba is not None:
         auc = roc_auc_score(y_true, y_pred_proba, multi_class="ovr")
@@ -91,7 +93,7 @@ def train_nn_classifier(
     nn_model: Sequential, X_train, y_train, epochs, batch_size, validation_data=None
 ):
     """Trains a sequential neural network classifier. Returns training history."""
-    
+
     # Train the neural network on input data
     nn_history = nn_model.fit(
         X_train,
@@ -162,9 +164,9 @@ def custom_loo_cv(X, y, epochs, batch_size):
         y_pred_total = np.concatenate([y_pred_total, y_pred])
         y_pred_proba_total = np.concatenate([y_pred_proba_total, y_pred_proba])
 
-        # Collect and print classification report
-        print(f"Classification report for subject {i}:")
-        print_important_classification_metrics(y_true, y_pred)
+        # Print classification report
+        # print(f"Classification report for subject {i}:")
+        # print_important_classification_metrics(y_true, y_pred)
 
     # Collect and print total classification report
     print("Total classification report:")
@@ -174,11 +176,15 @@ def custom_loo_cv(X, y, epochs, batch_size):
 
     return y_true_total, y_pred_total, y_pred_proba_total
 
+
 def flatten_array(X: np.array) -> np.array:
     num_samples, num_timesteps, num_sensors = X.shape
     return X.reshape(num_samples, num_timesteps * num_sensors)
 
-def generalized_custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_trees=None):
+
+def generalized_custom_loo_cv(
+    cl_type, X, y, epochs=None, batch_size=None, n_trees=None
+):
     # Initialize storage for true and predicted labels
     y_true_total = np.array([], dtype=int)
     y_pred_total = np.array([], dtype=int)
@@ -186,6 +192,7 @@ def generalized_custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_tre
 
     # Leave-One-Out Cross-Validation
     for i in range(len(X)):
+        print(f"Trainning model {i}...")
         # Prepare the training and test sets
         X_train = np.concatenate([X[j] for j in range(len(X)) if j != i], axis=0)
         y_train = np.concatenate([y[j] for j in range(len(y)) if j != i], axis=0)
@@ -206,6 +213,9 @@ def generalized_custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_tre
 
             # Load the classifier model and train it
             model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=1)
+
+            y_pred_proba = model.predict(X_test)
+            y_true = np.argmax(y_test, axis=1)
         else:
             # Flatten the input data
             X_train = flatten_array(X_train)
@@ -216,16 +226,15 @@ def generalized_custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_tre
                     random_state=7,
                     n_jobs=-1,
                     verbose=2,
-                    class_weight="balanced",
-                    max_depth=10
+                    # class_weight="balanced",
+                    max_depth=10,
                 )
             else:
                 model = GaussianNB()
             model.fit(X_train, y_train)
+            y_pred_proba = model.predict_proba(X_test)
+            y_true = y_test
 
-        # Make predictions on the test set
-        y_pred_proba = model.predict(X_test)
-        y_true = np.argmax(y_test, axis=1)
         y_pred = np.argmax(y_pred_proba, axis=1)
 
         # Save true and predicted labels
@@ -234,8 +243,8 @@ def generalized_custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_tre
         y_pred_proba_total = np.concatenate([y_pred_proba_total, y_pred_proba])
 
         # Collect and print classification report
-        print(f"Classification report for subject {i}:")
-        print_important_classification_metrics(y_true, y_pred)
+        # print(f"Classification report for subject {i}:")
+        # print_important_classification_metrics(y_true, y_pred)
 
     # Collect and print total classification report
     print("Total classification report:")

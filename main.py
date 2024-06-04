@@ -21,7 +21,7 @@ TEST_SUBJECTS = None
 N_TREES = 100
 
 ## Neural network parameters
-EPOCHS = 1
+EPOCHS = 20
 BATCH_SIZE = 1_000
 
 
@@ -32,22 +32,24 @@ def main():
     #### Add data visualization here
     #
     #
-    
+
     #### Train classifiers
 
     ## Use leave-one-out cross validation to evaluate classifiers
-    # Evaluate Naive Bayes classifier
-    cl.generalized_custom_loo_cv("BayesianNetworks", X, y)
-
-
-    # Evaluate Random Forest classifier
-    cl.generalized_custom_loo_cv("RandomForest", X, y, n_trees=N_TREES)
 
     # Evaluate Neural Network classifier
-    cl.generalized_custom_loo_cv("Sequential", X, y, EPOCHS, BATCH_SIZE)
+    # cl.generalized_custom_loo_cv("Sequential", X, y, EPOCHS, BATCH_SIZE)
+
+    # Evaluate Random Forest classifier
+    # cl.generalized_custom_loo_cv("RandomForest", X, y, n_trees=N_TREES)
+
+    # Evaluate Bayesian Networks classifier
+    # cl.generalized_custom_loo_cv("BayesianNetworks", X, y)
 
     # Neural Network (tf Sequential model)
     print("Training Neural Network classifier...")
+    X = np.concatenate([X[j] for j in range(len(X))], axis=0)
+    y = np.concatenate([y[j] for j in range(len(y))], axis=0)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.3, random_state=7, shuffle=True
     )
@@ -70,7 +72,7 @@ def main():
     # Flatten the input data
     X_train = fn.flatten_array(X_train)
     X_test = fn.flatten_array(X_test)
-    
+
     rf_classifier = cl.get_rf_model(N_TREES)
     rf_classifier.fit(X_train, y_train)
     cl.evaluateClassifier(
@@ -92,7 +94,6 @@ def main():
     kmeans = KMeans(n_clusters=5, random_state=7)
     km_labels = kmeans.fit_predict(feature_matrix)
     clustering.plot_clusters(feature_matrix, km_labels)
-
 
     # Perform hierarchical clustering
     agg_clustering = AgglomerativeClustering(n_clusters=5)
