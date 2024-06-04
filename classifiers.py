@@ -1,6 +1,5 @@
 from data_visualization import display_confusion_matrix
 import numpy as np
-import tensorflow_decision_forests as tfdf
 from sklearn.metrics import (
     accuracy_score,
     roc_auc_score,
@@ -13,6 +12,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout, LSTM, Input
 from keras.losses import CategoricalFocalCrossentropy
 from keras.optimizers import Adam
+from keras.metrics import Precision, Recall, AUC, F1Score
 from functions import get_label_distribution
 from data_visualization import plot_distribution_histograms
 
@@ -52,7 +52,9 @@ def evaluateClassifier(
     print_important_classification_metrics(y_true, y_pred, y_pred_proba)
 
 
-def print_important_classification_metrics(y_true, y_pred, y_pred_proba=None):
+def print_important_classification_metrics(
+    y_true, y_pred, y_pred_proba=None, filename=""
+):
     # Calculate evaluation metrics
     if y_pred_proba is not None:
         auc = roc_auc_score(y_true, y_pred_proba, multi_class="ovr")
@@ -66,7 +68,7 @@ def print_important_classification_metrics(y_true, y_pred, y_pred_proba=None):
     )
     print(f"Accuracy: {accuracy:.2f}")
     print("Classification Report:\n", class_rep)
-    display_confusion_matrix(y_true, y_pred, None, LABEL_LIST)
+    display_confusion_matrix(y_true, y_pred, None, LABEL_LIST, filename)
 
 
 def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
@@ -81,7 +83,7 @@ def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
     model.compile(
         optimizer=Adam(learning_rate=0.001),
         loss=CategoricalFocalCrossentropy(alpha=alpha, gamma=4),
-        metrics=["accuracy"],
+        metrics=["accuracy", Precision(), Recall(), AUC(), F1Score()],
     )
 
     return model
@@ -91,7 +93,7 @@ def train_nn_classifier(
     nn_model: Sequential, X_train, y_train, epochs, batch_size, validation_data=None
 ):
     """Trains a sequential neural network classifier. Returns training history."""
-    
+
     # Train the neural network on input data
     nn_history = nn_model.fit(
         X_train,
@@ -123,8 +125,12 @@ def calculate_alpha(label_distribution: list[float]) -> list[float]:
     return alpha
 
 
-def custom_loo_cv(X, y, epochs, batch_size):
+def flatten_array(X: np.array) -> np.array:
+    num_samples, num_timesteps, num_sensors = X.shape
+    return X.reshape(num_samples, num_timesteps * num_sensors)
 
+
+def custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_trees=None):
     # Initialize storage for true and predicted labels
     y_true_total = np.array([], dtype=int)
     y_pred_total = np.array([], dtype=int)
@@ -132,6 +138,7 @@ def custom_loo_cv(X, y, epochs, batch_size):
 
     # Leave-One-Out Cross-Validation
     for i in range(len(X)):
+        print(f"Trainning model {i}...")
         # Prepare the training and test sets
         X_train = np.concatenate([X[j] for j in range(len(X)) if j != i], axis=0)
         y_train = np.concatenate([y[j] for j in range(len(y)) if j != i], axis=0)
@@ -142,19 +149,38 @@ def custom_loo_cv(X, y, epochs, batch_size):
         y_test_distr = get_label_distribution(y_test)
         plot_distribution_histograms([y_train_distr, y_test_distr])
 
-        # Initialize and train the classifier
-        num_classes = np.amax(y_train) + 1
-        alpha = calculate_alpha(y_train_distr)
-        y_train = np.eye(num_classes)[y_train]
-        y_test = np.eye(num_classes)[y_test]
+        if cl_type == "Sequential":
+            # Initialize and train the classifier
+            num_classes = np.amax(y_train) + 1
+            alpha = calculate_alpha(y_train_distr)
+            y_train = np.eye(num_classes)[y_train]
+            y_test = np.eye(num_classes)[y_test]
+            model = get_sequential_model(X_train.shape[1:], num_classes, alpha)
 
-        # Load the classifier model and train it
-        clf = get_sequential_model(X_train.shape[1:], num_classes, alpha)
-        clf.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=1)
+            # Load the classifier model and train it
+            model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, verbose=1)
 
-        # Make predictions on the test set
-        y_pred_proba = clf.predict(X_test)
-        y_true = np.argmax(y_test, axis=1)
+            y_pred_proba = model.predict(X_test)
+            y_true = np.argmax(y_test, axis=1)
+        else:
+            # Flatten the input data
+            X_train = flatten_array(X_train)
+            X_test = flatten_array(X_test)
+            if cl_type == "RandomForest":
+                model = RandomForestClassifier(
+                    n_estimators=n_trees,
+                    random_state=7,
+                    n_jobs=-1,
+                    verbose=2,
+                    # class_weight="balanced",
+                    max_depth=10,
+                )
+            else:
+                model = GaussianNB()
+            model.fit(X_train, y_train)
+            y_pred_proba = model.predict_proba(X_test)
+            y_true = y_test
+
         y_pred = np.argmax(y_pred_proba, axis=1)
 
         # Save true and predicted labels
@@ -163,13 +189,13 @@ def custom_loo_cv(X, y, epochs, batch_size):
         y_pred_proba_total = np.concatenate([y_pred_proba_total, y_pred_proba])
 
         # Collect and print classification report
-        print(f"Classification report for subject {i}:")
-        print_important_classification_metrics(y_true, y_pred)
+        # print(f"Classification report for subject {i}:")
+        # print_important_classification_metrics(y_true, y_pred)
 
     # Collect and print total classification report
     print("Total classification report:")
     print_important_classification_metrics(
-        y_true_total, y_pred_total, y_pred_proba_total
+        y_true_total, y_pred_total, y_pred_proba_total, filename=cl_type
     )
 
     return y_true_total, y_pred_total, y_pred_proba_total
