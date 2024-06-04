@@ -301,21 +301,25 @@ def find_top_participant_per_activity(durations_dict):
 
 
 def plot_history(history) -> None:
-    """Plot the trainning history (loss and accuracy) of the neural network model."""
+    """Plot the training history of the neural network model for all metrics."""
 
-    fg = plt.figure()
-    # plot loss during training
-    plt.subplot(211)
-    plt.title("Loss (Categorical Focal Crossentropy)")
-    plt.plot(history.history["loss"], label="train")
-    plt.plot(history.history["val_loss"], label="test")
-    plt.legend()
-    # plot accuracy during training
-    plt.subplot(212)
-    plt.title("Accuracy")
-    plt.plot(history.history["accuracy"], label="train")
-    plt.plot(history.history["val_accuracy"], label="test")
-    plt.legend()
+    metrics = [key for key in history.history.keys() if not key.startswith('val_')]
+    num_metrics = len(metrics)
+
+    plt.figure(figsize=(12, num_metrics * 4))
+
+    for i, metric in enumerate(metrics):
+        plt.subplot(num_metrics, 1, i + 1)
+        plt.title(f'{metric.capitalize()}')
+        plt.plot(history.history[metric], label='train')
+        
+        val_metric = f'val_{metric}'
+        if val_metric in history.history:
+            plt.plot(history.history[val_metric], label='test')
+        
+        plt.legend()
+
+    plt.tight_layout()
     plt.show()
 
 
@@ -324,7 +328,7 @@ def display_confusion_matrix(
     y_pred,
     labels,
     classes,
-    filename="Screenshots/Confusion Matrix.png",
+    filename="",
     ymap=None,
     figsize=(17, 17),
 ):
@@ -347,6 +351,7 @@ def display_confusion_matrix(
       figsize:   the size of the figure plotted.
     """
     # sns.set_theme(font_scale=2.8)
+    filename = "Screenshots/" + filename + "_Confusion_Matrix.png"
 
     if ymap is not None:
         y_pred = [ymap[yi] for yi in y_pred]
