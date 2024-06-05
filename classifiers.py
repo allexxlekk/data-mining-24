@@ -130,7 +130,16 @@ def flatten_array(X: np.array) -> np.array:
     return X.reshape(num_samples, num_timesteps * num_sensors)
 
 
-def custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_trees=None):
+def custom_loo_cv(
+    cl_type,
+    X,
+    y,
+    epochs=None,
+    batch_size=None,
+    n_trees=None,
+    undersample=True,
+    us_factor=4,
+):
     # Initialize storage for true and predicted labels
     y_true_total = np.array([], dtype=int)
     y_pred_total = np.array([], dtype=int)
@@ -142,6 +151,12 @@ def custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_trees=None):
         # Prepare the training and test sets
         X_train = np.concatenate([X[j] for j in range(len(X)) if j != i], axis=0)
         y_train = np.concatenate([y[j] for j in range(len(y)) if j != i], axis=0)
+        if undersample:
+            values, value_counts = np.unique(y_train, return_counts=True)
+            scaled_value_counts = scale_array(value_counts, us_factor)
+            X_train, y_train = custom_undersample(
+                X_train, y_train, dict(zip(values, scaled_value_counts))
+            )
         X_test, y_test = shuffle(X[i], y[i], random_state=7)
 
         # Plot train and test label distributions
@@ -199,3 +214,45 @@ def custom_loo_cv(cl_type, X, y, epochs=None, batch_size=None, n_trees=None):
     )
 
     return y_true_total, y_pred_total, y_pred_proba_total
+
+
+def scale_array(original_array, factor):
+    """Scale the values of a 1-d numpy array to a new range defined by a factor of its minimum value."""
+
+    old_min = np.min(original_array)
+    old_max = np.max(original_array)
+    new_max = old_min * factor
+
+    scaled_array = ((original_array - old_min) / (old_max - old_min)) * (
+        new_max - old_min
+    ) + old_min
+    return scaled_array.astype(int)
+
+
+def custom_undersample(X, y, sample_count):
+    """Undersample the dataset based on the specified sample counts for each class."""
+
+    unique_classes = np.unique(y)
+    resampled_indices = []
+
+    for cls in unique_classes:
+        cls_indices = np.where(y == cls)[0]
+        num_samples = sample_count.get(cls, len(cls_indices))
+
+        if num_samples > len(cls_indices):
+            raise ValueError(
+                f"Requested more samples ({num_samples}) than available ({len(cls_indices)}) for class {cls}"
+            )
+
+        # Randomly sample indices without replacement
+        sampled_indices = np.random.choice(cls_indices, size=num_samples, replace=False)
+        resampled_indices.extend(sampled_indices)
+
+    # Shuffle the resampled indices to mix the classes
+    np.random.shuffle(resampled_indices)
+
+    # Create the resampled X and y
+    X_resampled = X[resampled_indices]
+    y_resampled = y[resampled_indices]
+
+    return X_resampled, y_resampled

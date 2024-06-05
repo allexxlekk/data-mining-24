@@ -303,20 +303,20 @@ def find_top_participant_per_activity(durations_dict):
 def plot_history(history) -> None:
     """Plot the training history of the neural network model for all metrics."""
 
-    metrics = [key for key in history.history.keys() if not key.startswith('val_')]
+    metrics = [key for key in history.history.keys() if not key.startswith("val_")]
     num_metrics = len(metrics)
 
     plt.figure(figsize=(12, num_metrics * 4))
 
     for i, metric in enumerate(metrics):
         plt.subplot(num_metrics, 1, i + 1)
-        plt.title(f'{metric.capitalize()}')
-        plt.plot(history.history[metric], label='train')
-        
-        val_metric = f'val_{metric}'
+        plt.title(f"{metric.capitalize()}")
+        plt.plot(history.history[metric], label="train")
+
+        val_metric = f"val_{metric}"
         if val_metric in history.history:
-            plt.plot(history.history[val_metric], label='test')
-        
+            plt.plot(history.history[val_metric], label="test")
+
         plt.legend()
 
     plt.tight_layout()

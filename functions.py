@@ -33,26 +33,6 @@ LABEL_MAPPING = {
 }
 
 
-def add_timesteps(df: pd.DataFrame) -> pd.DataFrame:
-    """Adds time_step column, indicating the amount of 0.01 second steps that have passed since the sensors started recording"""
-
-    df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
-
-    # Find the minimum timestamp value
-    min_timestamp = df["timestamp"].min()
-
-    # Calculate the time difference from the minimum timestamp and convert it to seconds
-    df["time_step"] = (df["timestamp"] - min_timestamp).dt.total_seconds()
-
-    # Convert time steps to increments of 0.01 seconds
-    df["time_step"] = df["time_step"] / 0.01
-
-    # Convert time steps to integers
-    df["time_step"] = df["time_step"].astype(int)
-
-    return df
-
-
 def read_and_preprocess_data(
     folder_path="harth/",
     subjects=22,
@@ -77,8 +57,6 @@ def read_and_preprocess_data(
         df["ID"] = idx
         df["label"] = df["label"].map(LABEL_MAPPING)
         print(df["label"].unique())
-
-        df = add_timesteps(df)
 
         if idx == 20:
             # Filter out odd timestamps for subject 20 to be consistent with 20ms sampling of the other subjects
@@ -111,7 +89,7 @@ def segment_time_series(df, window_length_ms, overlap):
     window_indices = np.arange(num_windows) * step_size
     window_end_indices = window_indices + samples_per_window
 
-    time_steps = df["time_step"].values
+    timestamps = pd.to_datetime(df["timestamp"]).values
     labels = df["label"].values
     feature_data = df[FEATURES].values
 
@@ -124,9 +102,9 @@ def segment_time_series(df, window_length_ms, overlap):
         for i, end in zip(window_indices, window_end_indices)
     ]
 
-    # Check for windows with maximum time step difference > 3
+    # Drop windows with maximum time difference > 20ms
     valid_windows = [
-        np.amax(np.diff(time_steps[i:end])) <= 3
+        np.amax(np.diff(timestamps[i:end]).astype("timedelta64[ms]").astype(int)) <= 20
         for i, end in zip(window_indices, window_end_indices)
     ]
 
