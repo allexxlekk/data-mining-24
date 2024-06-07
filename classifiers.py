@@ -8,13 +8,14 @@ from sklearn.metrics import (
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.naive_bayes import GaussianNB
 from sklearn.utils import shuffle
+from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, LSTM, Input
 from keras.losses import CategoricalFocalCrossentropy
 from keras.optimizers import Adam
 from keras.metrics import Precision, Recall, AUC, F1Score
 from functions import get_label_distribution
-from data_visualization import plot_distribution_histograms
+from data_visualization import plot_distribution_histograms, plot_history
 
 LABEL_LIST = [
     "walking",
@@ -63,7 +64,8 @@ def print_important_classification_metrics(
     class_rep = classification_report(
         y_true,
         y_pred,
-        target_names=[LABEL_LIST[idx] for idx in list(np.unique(y_pred))],
+        # labels=LABEL_LIST,
+        target_names=LABEL_LIST,  # [LABEL_LIST[idx] for idx in list(np.unique(y_pred))],
         zero_division=0,
     )
     print(f"Accuracy: {accuracy:.2f}")
@@ -81,7 +83,7 @@ def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
     model.add(Dense(output_shape, activation="softmax"))
     model.summary()
     model.compile(
-        optimizer=Adam(learning_rate=0.001),
+        optimizer=Adam(learning_rate=0.005),
         loss=CategoricalFocalCrossentropy(alpha=alpha, gamma=4),
         metrics=["accuracy", Precision(), Recall(), AUC(), F1Score()],
     )
@@ -140,6 +142,8 @@ def custom_loo_cv(
     undersample=True,
     us_factor=4,
 ):
+    """Given a model type (Sequential/RandomForest/BayesianNetworks), train and evaluate the model using Leave-One-Out Cross-Validation (all but one individuals are used during training and the remaining one is used for testing). Finally, the total classification report and the confusion matrix are displayed."""
+
     # Initialize storage for true and predicted labels
     y_true_total = np.array([], dtype=int)
     y_pred_total = np.array([], dtype=int)
@@ -161,8 +165,8 @@ def custom_loo_cv(
 
         # Plot train and test label distributions
         y_train_distr = get_label_distribution(y_train)
-        y_test_distr = get_label_distribution(y_test)
-        plot_distribution_histograms([y_train_distr, y_test_distr])
+        # y_test_distr = get_label_distribution(y_test)
+        # plot_distribution_histograms([y_train_distr, y_test_distr])
 
         if cl_type == "Sequential":
             # Initialize and train the classifier
@@ -256,3 +260,90 @@ def custom_undersample(X, y, sample_count):
     y_resampled = y[resampled_indices]
 
     return X_resampled, y_resampled
+
+
+def train_and_evaluate_models_no_cv(
+    X: list[np.array],
+    y: list[np.array],
+    epochs=20,
+    batch_size=1_000,
+    n_trees=100,
+    undersample=True,
+    us_factor=4,
+):
+    """Train and evaluate classifiers without using Leave-One-Out Cross-Validation"""
+
+    # Concatenate the data lists into 2 numpy arrays
+    X = np.concatenate([X_ind for X_ind in X], axis=0)
+    y = np.concatenate([y_ind for y_ind in y], axis=0)
+
+    # Split the dataset to train and test data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.3, random_state=7, shuffle=True
+    )
+
+    # Perform undersampling on training data
+    if undersample:
+        # Get original label distribution
+        y_train_original_distr = get_label_distribution(y_train)
+
+        # Calculate the number of labels
+        values, value_counts = np.unique(y_train, return_counts=True)
+
+        # Calculate the desired number of labels depending on us_factor
+        scaled_value_counts = scale_array(value_counts, us_factor)
+
+        # Select calculated desired samples per label
+        X_train, y_train = custom_undersample(
+            X, y, dict(zip(values, scaled_value_counts))
+        )
+        # Get label distribution after undersampling
+        y_train_us_distr = get_label_distribution(y_train)
+
+        # Print before and after undersampling distributions
+        plot_distribution_histograms(
+            [y_train_original_distr, y_train_us_distr],
+            set_names=["Before undersampling", "After undersampling"],
+        )
+
+    #### Neural Network (tf Sequential model)
+    print("Training Neural Network classifier...")
+    num_classes = np.max(y_train) + 1
+    y_train_distr = get_label_distribution(y_train)
+    alpha = calculate_alpha(y_train_distr)
+    nn_model = get_sequential_model((X_train.shape[1:]), num_classes, alpha)
+    nn_history = train_nn_classifier(
+        nn_model,
+        X_train,
+        np.eye(num_classes)[y_train],
+        epochs,
+        batch_size,
+    )
+    plot_history(nn_history)
+    evaluateClassifier(nn_model, X_test, np.eye(num_classes)[y_test])
+
+    #### Random Forest (sklearn)
+    print("Training Random Forest classifier...")
+    # Flatten the input data
+    X_train = flatten_array(X_train)
+    X_test = flatten_array(X_test)
+
+    rf_classifier = RandomForestClassifier(
+        n_estimators=n_trees,
+        random_state=7,
+        n_jobs=-1,
+        verbose=2,
+        # class_weight="balanced",
+        max_depth=5,
+    )
+    rf_classifier.fit(X_train, y_train)
+    evaluateClassifier(
+        rf_classifier,
+        X_test,
+        y_test,
+    )
+
+    #### Gaussian Naive Bayes
+    print("Training Gaussian Naive Bayes classifier...")
+    gnb_classifier = GaussianNB().fit(X_train, y_train)
+    evaluateClassifier(gnb_classifier, X_test, y_test)

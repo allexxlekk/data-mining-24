@@ -4,10 +4,12 @@ import matplotlib.colors as mcolors
 import matplotlib.patches as mpatches
 from matplotlib.ticker import PercentFormatter
 import numpy as np
-from scipy.interpolate import make_interp_spline
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-
+from sklearn.decomposition import PCA
+from scipy.interpolate import make_interp_spline
+from scipy.cluster.hierarchy import dendrogram, linkage
+from functions import get_label_distribution
 
 LABEL_LIST = [
     "Walking",
@@ -409,36 +411,45 @@ def plot_histogram(percentages, ax, set_name):
 
     # Annotate each bar with its percentage value
     for bar, percentage in zip(bars, percentages):
+        height = bar.get_height()
+        # Adjust position based on the height of the bar
+        offset = -5 if height > 10 else 3
+        va = "top" if height > 10 else "bottom"
         ax.annotate(
             f"{percentage:.2f}%",
-            xy=(bar.get_x() + bar.get_width() / 2, bar.get_height()),
-            xytext=(0, 3),
+            xy=(bar.get_x() + bar.get_width() / 2, height),
+            xytext=(0, offset),
             textcoords="offset points",
             ha="center",
-            va="bottom",
+            va=va,
+            color="black",  # Change color if needed for better visibility
         )
 
 
-def plot_distribution_histograms(distributions: list) -> None:
+def plot_distribution_histograms(distributions, set_names=None) -> None:
     """Print the class distribution (%) of the train and test datasets"""
+
+    if set_names is None:
+        # Set names for subplots
+        set_names = ["Train", "Test", "Val"]
 
     # Set up the figure and subplots
     fig, axes = plt.subplots(len(distributions), 1, figsize=(10, 12))
-    set_names = ["Train", "Test", "Val"]
 
-    for dist, ax, name in zip(distributions, axes, set_names):
+    # Ensure axes is iterable
+    if len(distributions) == 1:
+        axes = [axes]
+
+    # Plot each distribution
+    for dist, ax, name in zip(distributions, axes, set_names[: len(distributions)]):
         plot_histogram(dist, ax, name)
 
-    plt.tight_layout()
-    plt.draw()
-    # plt.show()
+    plt.tight_layout(pad=1.2)
+    plt.show()
 
 
-def plot_sensor_values(df: pd.DataFrame, id, plot_start=0, plot_end=2000):
-    """Plots all sensor values of a subject, given its ID."""
-
-    # Select only entries from given ID and select specified entries
-    df = df[df["ID"] == id].iloc[plot_start:plot_end]
+def plot_sensor_values(df: pd.DataFrame, id):
+    """Plots all sensor values of a given subject dataframe."""
 
     # Define sensor names and components
     sensors = ["back", "thigh"]  # List of sensor names
@@ -497,6 +508,48 @@ def plot_sensor_values(df: pd.DataFrame, id, plot_start=0, plot_end=2000):
     # Adjust layout and display plot
     plt.tight_layout()
     plt.show()
+
+
+def plot_clusters(feature_matrix, labels):
+    pca = PCA(n_components=2)
+    reduced_features = pca.fit_transform(feature_matrix)
+
+    plt.scatter(reduced_features[:, 0], reduced_features[:, 1], c=labels)
+    plt.xlabel("PCA Component 1")
+    plt.ylabel("PCA Component 2")
+    plt.title("Clustering of Individuals Based on Activities")
+    plt.show()
+
+
+def plot_dendogram(feature_matrix, labels):
+    # Create a linkage matrix for dendrogram
+    linkage_matrix = linkage(feature_matrix, method="ward")
+
+    # Plot the dendrogram
+    plt.figure(figsize=(10, 7))
+    dendrogram(linkage_matrix, labels=np.arange(feature_matrix.shape[0]))
+    plt.title("Hierarchical Clustering Dendrogram")
+    plt.xlabel("Sample Index")
+    plt.ylabel("Distance")
+    plt.show()
+
+
+def plot_label_distr_per_cluster(y, clusters):
+    label_distributions = []
+    for c in np.unique(clusters):
+
+        cluster_idxs = np.argwhere(clusters == c).flatten().tolist()
+        print(f"Cluster {c} individuals: {cluster_idxs}")
+        label_distributions.append(
+            get_label_distribution(
+                np.concatenate([y[idx] for idx in cluster_idxs], axis=0)
+            )
+        )
+
+    plot_distribution_histograms(
+        label_distributions,
+        set_names=[f"Cluster {i}" for i in range(len(label_distributions))],
+    )
 
 
 # if __name__ == "__main__":

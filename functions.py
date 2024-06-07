@@ -3,6 +3,7 @@ import os
 import numpy as np
 import csv
 from sklearn.utils import shuffle
+from sklearn.preprocessing import StandardScaler
 from time import time
 import pickle
 
@@ -39,7 +40,7 @@ def read_and_preprocess_data(
     window_length_ms=400,
     overlap=0.99,
 ) -> list:
-    """Reads original csv files and loads them into a dataframe. Appropriate pre-processing is applied to the dataset and finally returns the inputs and labels of classifiers."""
+    """Reads original csv files and loads them into a dataframe. Appropriate pre-processing is applied to the dataset. Finally, 2 lists containing the inputs and the labels of classifiers are returned."""
 
     print("Reading dataset...")
     files = os.listdir(folder_path)
@@ -53,16 +54,20 @@ def read_and_preprocess_data(
         print(f"\nPreprocessing subject {idx}...")
         file_path = os.path.join(folder_path, csv_file)
         df = pd.read_csv(file_path, quoting=csv.QUOTE_NONE)
-        # Add subject IDs
-        df["ID"] = idx
-        df["label"] = df["label"].map(LABEL_MAPPING)
-        print(df["label"].unique())
 
+        # For subject 20, keep every other row to be consistent with 20ms sampling of the other subjects
         if idx == 20:
-            # Filter out odd timestamps for subject 20 to be consistent with 20ms sampling of the other subjects
-            df = df[df["time_step"] % 2 == 0]
+            df = df.iloc[::2]
 
+        # Convert timestamp column to datetime datatype
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+        df["label"] = df["label"].map(LABEL_MAPPING)
+
+
+        # Apply preprocessing on data and prepare input and labels
         X_temp, y_temp = segment_time_series(df, window_length_ms, overlap)
+
+        # Append current subject's input and labels to the total list
         X.append(X_temp)
         y.append(y_temp)
 
@@ -73,7 +78,7 @@ def read_and_preprocess_data(
 
 
 def segment_time_series(df, window_length_ms, overlap):
-    """This functions creates windows of a given length and overlap fit for time-series classification tasks."""
+    """This function creates windows of a given length and overlap fit for time-series data."""
 
     # Time the function
     start = time()
@@ -89,7 +94,8 @@ def segment_time_series(df, window_length_ms, overlap):
     window_indices = np.arange(num_windows) * step_size
     window_end_indices = window_indices + samples_per_window
 
-    timestamps = pd.to_datetime(df["timestamp"]).values
+    # Extract necessary values
+    timestamps = df["timestamp"].values
     labels = df["label"].values
     feature_data = df[FEATURES].values
 
@@ -143,3 +149,20 @@ def load_preprocessed_data() -> list[np.array]:
         y.append(y_temp)
 
     return X, y
+
+def create_feature_matrix(y: np.array):
+    """Creates feature matrix to use for clustering."""
+    
+    num_subjects = len(y)
+    # Initialize the feature matrix
+    feature_matrix = np.zeros((num_subjects, 12))
+    # Fill the feature matrix
+    for i, subject_data in enumerate(y):
+        labels, counts = np.unique(subject_data, return_counts=True)
+        feature_matrix[i, labels] = counts
+
+    
+    # Normalize the feature vectors
+    scaler = StandardScaler()
+    feature_matrix = scaler.fit_transform(feature_matrix)
+    return feature_matrix
