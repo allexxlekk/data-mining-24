@@ -64,8 +64,7 @@ def print_important_classification_metrics(
     class_rep = classification_report(
         y_true,
         y_pred,
-        # labels=LABEL_LIST,
-        target_names=LABEL_LIST,  # [LABEL_LIST[idx] for idx in list(np.unique(y_pred))],
+        target_names=LABEL_LIST,
         zero_division=0,
     )
     print(f"Accuracy: {accuracy:.2f}")
@@ -73,7 +72,7 @@ def print_important_classification_metrics(
     display_confusion_matrix(y_true, y_pred, None, LABEL_LIST, filename)
 
 
-def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
+def get_sequential_model(input_shape, output_shape, alpha) -> Sequential:
     """Returns a compiled sequential model for classification."""
 
     model = Sequential()
@@ -83,7 +82,7 @@ def get_sequential_model(input_shape, output_shape, alpha=0.25) -> Sequential:
     model.add(Dense(output_shape, activation="softmax"))
     model.summary()
     model.compile(
-        optimizer=Adam(learning_rate=0.005),
+        optimizer=Adam(learning_rate=0.001),
         loss=CategoricalFocalCrossentropy(alpha=alpha, gamma=4),
         metrics=["accuracy", Precision(), Recall(), AUC(), F1Score()],
     )
@@ -270,12 +269,13 @@ def train_and_evaluate_models_no_cv(
     n_trees=100,
     undersample=True,
     us_factor=4,
+    individuals=22,
 ):
     """Train and evaluate classifiers without using Leave-One-Out Cross-Validation"""
 
     # Concatenate the data lists into 2 numpy arrays
-    X = np.concatenate([X_ind for X_ind in X], axis=0)
-    y = np.concatenate([y_ind for y_ind in y], axis=0)
+    X = np.concatenate([X_ind for X_ind in X[:individuals]], axis=0)
+    y = np.concatenate([y_ind for y_ind in y[:individuals]], axis=0)
 
     # Split the dataset to train and test data
     X_train, X_test, y_train, y_test = train_test_split(

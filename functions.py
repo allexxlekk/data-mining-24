@@ -63,7 +63,6 @@ def read_and_preprocess_data(
         df["timestamp"] = pd.to_datetime(df["timestamp"])
         df["label"] = df["label"].map(LABEL_MAPPING)
 
-
         # Apply preprocessing on data and prepare input and labels
         X_temp, y_temp = segment_time_series(df, window_length_ms, overlap)
 
@@ -150,9 +149,10 @@ def load_preprocessed_data() -> list[np.array]:
 
     return X, y
 
+
 def create_feature_matrix(y: np.array):
     """Creates feature matrix to use for clustering."""
-    
+
     num_subjects = len(y)
     # Initialize the feature matrix
     feature_matrix = np.zeros((num_subjects, 12))
@@ -161,7 +161,6 @@ def create_feature_matrix(y: np.array):
         labels, counts = np.unique(subject_data, return_counts=True)
         feature_matrix[i, labels] = counts
 
-    
     # Normalize the feature vectors
     scaler = StandardScaler()
     feature_matrix = scaler.fit_transform(feature_matrix)

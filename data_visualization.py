@@ -5,8 +5,9 @@ import matplotlib.patches as mpatches
 from matplotlib.ticker import PercentFormatter
 import numpy as np
 import seaborn as sns
-from sklearn.metrics import confusion_matrix
+from sklearn.metrics import confusion_matrix, pairwise_distances
 from sklearn.decomposition import PCA
+from sklearn.cluster import AgglomerativeClustering, KMeans
 from scipy.interpolate import make_interp_spline
 from scipy.cluster.hierarchy import dendrogram, linkage
 from functions import get_label_distribution
@@ -550,6 +551,50 @@ def plot_label_distr_per_cluster(y, clusters):
         label_distributions,
         set_names=[f"Cluster {i}" for i in range(len(label_distributions))],
     )
+
+
+def plot_elbow_curve(wcss, algorithm=""):
+    """Displays the elbow method plot for clustering."""
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(wcss) + 1), wcss, marker="o", linestyle="--")
+    plt.title(f"Elbow Method Using {algorithm} For Optimal clusters")
+    plt.xlabel("Number of clusters")
+    plt.ylabel("WCSS")
+    plt.xticks(range(1, len(wcss) + 1))
+    plt.grid(True)
+    plt.show()
+
+
+def plot_elbow_curves(feature_matrix):
+    """Plots elbow methods for both clustering methods"""
+
+    kmeans_wcss = []
+    hierarchical_wcss = []
+
+    for c in range(1, 10):
+        # Perform K-means clustering with c clusters and save Within-Cluster Sum of Squares (WCSS)
+        kmeans = KMeans(n_clusters=c, random_state=10)
+        km = kmeans.fit(feature_matrix)
+        kmeans_wcss.append(km.inertia_)
+
+        # Perform Hierarchical clustering with c clusters
+        agglom = AgglomerativeClustering(n_clusters=c)
+        agglom.fit(feature_matrix)
+        labels = agglom.labels_
+
+        # Calculate and save WCSS
+        distance_matrix = pairwise_distances(feature_matrix)
+        wcss_value = sum(
+            np.sum(distance_matrix[labels == label][:, labels == label])
+            / len(distance_matrix[labels == label])
+            for label in set(labels)
+        )
+        hierarchical_wcss.append(wcss_value)
+
+    # Plot both elbow curves
+    plot_elbow_curve(kmeans_wcss, "K-Means")
+    plot_elbow_curve(hierarchical_wcss, "Agglomerative Clustering")
 
 
 # if __name__ == "__main__":

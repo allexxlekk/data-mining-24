@@ -17,14 +17,12 @@ N_TREES = 100
 
 ## Neural network parameters
 EPOCHS = 20
-BATCH_SIZE = 10
+BATCH_SIZE = 1_000
 
 
 def main():
     # X, y = fn.read_and_preprocess_data(subjects=SUBJECTS)
     X, y = fn.load_preprocessed_data()
-
-    ####### Add data visualization here (?)
 
     ####### Train classifiers and evaluate them using Leave-One-Out Cross-Validation (Very computationally expensive!)
 
@@ -37,16 +35,21 @@ def main():
     # # Evaluate Bayesian Networks classifier
     # cl.custom_loo_cv("BayesianNetworks", X, y)
 
-    ####### Train classifiers and evaluate them WITHOUT using Leave-One-Out Cross-Validation
-    cl.train_and_evaluate_models_no_cv(X, y, EPOCHS, BATCH_SIZE, N_TREES)
+    ####### Train classifiers and evaluate them using the whole dataset
+    # cl.train_and_evaluate_models_no_cv(
+    #     X, y, EPOCHS, BATCH_SIZE, N_TREES, individuals=22
+    # )
 
     ####### Clustering
     # Create feature matrix
     feature_matrix = fn.create_feature_matrix(y)
 
-    # Perform K-means clustering
-    kmeans = KMeans(n_clusters=3, random_state=17)
-    km_labels = kmeans.fit_predict(feature_matrix)
+    # Plot elbow curves for both clustering algorithms
+    # dv.plot_elbow_curves(feature_matrix)
+
+    # Perform K-Means clustering
+    km = KMeans(n_clusters=3, random_state=17)
+    km_labels = km.fit_predict(feature_matrix)
     dv.plot_clusters(feature_matrix, km_labels)
     dv.plot_label_distr_per_cluster(y, km_labels)
 
